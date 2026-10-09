@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and preferences",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "name": { "type": "string", "maxLength": 128 },
+        "provider": { "type": "string", "enum": ["email", "google", "apple"] },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "email", "name", "provider"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "A managed recurring contract or subscription record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "categoryId": { "type": "string", "maxLength": 64 },
+        "subcategory": { "type": "string", "maxLength": 128 },
+        "supplier": { "type": "string", "maxLength": 256 },
+        "contractNumber": { "type": "string", "maxLength": 128 },
+        "startDate": { "type": "string", "maxLength": 32 },
+        "isEndDateOpenEnded": { "type": "boolean" },
+        "endDate": { "type": "string", "maxLength": 32 },
+        "cancellationDeadline": { "type": "string", "maxLength": 32 },
+        "isDeadlineOverridden": { "type": "boolean" },
+        "autoRenew": { "type": "boolean" },
+        "renewalPeriod": { "type": "string", "maxLength": 64 },
+        "annualCost": { "type": "number" },
+        "monthlyCost": { "type": "number" },
+        "paymentFrequency": { "type": "string", "enum": ["monthly", "quarterly", "annually"] },
+        "status": { "type": "string", "enum": ["active", "cancelled", "expired", "switching"] },
+        "credentials": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string", "maxLength": 512 },
+            "username": { "type": "string", "maxLength": 256 },
+            "password": { "type": "string", "maxLength": 256 },
+            "notes": { "type": "string", "maxLength": 512 }
+          }
+        },
+        "notes": { "type": "string", "maxLength": 4096 },
+        "isDemo": { "type": "boolean" },
+        "isFavorite": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "name", "categoryId", "supplier", "annualCost", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Customizable contract categories",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "icon": { "type": "string", "maxLength": 64 },
+        "color": { "type": "string", "maxLength": 64 },
+        "isDefault": { "type": "boolean" }
+      },
+      "required": ["id", "name", "icon", "color"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document accessible only by the authenticated owner"
+    },
+    "/users/{userId}/contracts/{contractId}": {
+      "schema": "Contract",
+      "description": "Contract documents owned by the specific authenticated user"
+    },
+    "/users/{userId}/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Customized user category settings"
+    }
+  }
+}

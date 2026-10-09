@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "ContractWatch",
+  "short_name": "ContractWatch",
+  "description": "Smart contract management web app with cancellation radar, proactive notice alerts, document dossier, and savings insights.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
