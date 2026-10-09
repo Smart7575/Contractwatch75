@@ -734,9 +734,8 @@ export function loadContracts(): Contract[] {
               c.supplier?.includes('Interpolis')
           );
           if (hasLegacyDutch) {
-            const demoContracts = generateDemoContracts();
-            saveContracts(demoContracts);
-            return demoContracts;
+            saveContracts([]);
+            return [];
           }
 
           // Backfill coverageType on existing stored contracts if missing
@@ -782,10 +781,8 @@ export function loadContracts(): Contract[] {
     }
   } catch {}
 
-  // Initialize with American demo contracts on initial launch
-  const demoContracts = generateDemoContracts();
-  saveContracts(demoContracts);
-  return demoContracts;
+  // Return empty list by default - demo contracts can be loaded explicitly by user
+  return [];
 }
 
 export function saveContracts(contracts: Contract[]): void {

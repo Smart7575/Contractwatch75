@@ -154,7 +154,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User>(() => loadUser());
-  const [contracts, setContracts] = useState<Contract[]>(() => loadContracts());
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [categories, setCategories] = useState<Category[]>(() => loadCategories());
   const [filters, setFiltersState] = useState<FilterState>(initialFilters);
   const [isFirebaseAuthenticated, setIsFirebaseAuthenticated] = useState<boolean>(false);
@@ -251,14 +251,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const synced = await syncUserProfile(fbUser, provider as any);
           setUser(synced);
 
-          // Proactively synchronize any existing local contracts to Firestore
-          const isDemoDismissed = localStorage.getItem('contractwatch_demo_dismissed') === 'true';
-          const currentLocal = loadContracts();
-          const toSync = isDemoDismissed
-            ? currentLocal.filter((c) => !isDemoContract(c))
-            : currentLocal;
-          if (toSync && toSync.length > 0) {
-            syncAllContractsToFirestore(fbUser.uid, toSync)
+          // Proactively synchronize any existing local non-demo contracts to Firestore
+          const currentLocal = loadContracts().filter((c) => !isDemoContract(c));
+          if (currentLocal.length > 0) {
+            syncAllContractsToFirestore(fbUser.uid, currentLocal)
               .then((res) => {
                 setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
                 console.log(`Synced ${res.count} contracts to Firestore for user ${fbUser.uid}`);
@@ -272,7 +268,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } else {
         setIsFirebaseAuthenticated(false);
-        setUser(loadUser());
+        setUser(DEFAULT_USER);
+        setContracts([]);
+        saveContracts([]);
       }
     });
 
@@ -289,36 +287,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribeSnapshot = onSnapshot(
       contractsRef,
       async (snapshot) => {
-        // If 0 documents in Firestore
+        // If 0 documents in Firestore, keep clean state (user has no contracts yet)
         if (snapshot.empty) {
-          const isDemoDismissed = localStorage.getItem('contractwatch_demo_dismissed') === 'true';
-          if (isDemoDismissed) {
-            // User intentionally removed demo data - do not auto-seed!
-            setContracts([]);
-            saveContracts([]);
-            setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            return;
-          }
-
-          try {
-            // First check if user already has local contracts created
-            const currentLocal = loadContracts();
-            if (currentLocal && currentLocal.length > 0) {
-              const res = await syncAllContractsToFirestore(userId, currentLocal);
-              setContracts(res.contracts);
-              setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-              return;
-            }
-            const seeded = await seedDemoContractsInFirestore(userId);
-            setContracts(seeded);
-            saveContracts(seeded);
-            setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            return;
-          } catch (seedErr) {
-            console.warn('Could not auto-seed demo contracts:', seedErr);
-            setContracts([]);
-            saveContracts([]);
-          }
+          setContracts([]);
+          saveContracts([]);
+          setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
           return;
         }
 
@@ -872,6 +845,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsFirebaseAuthenticated(false);
     setUser(DEFAULT_USER);
     saveUser(DEFAULT_USER);
+    setContracts([]);
+    saveContracts([]);
+    setSelectedContractId(null);
   };
 
   const deleteAccount = async (): Promise<{ success: boolean; error?: string }> => {

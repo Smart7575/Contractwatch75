@@ -13,6 +13,7 @@ import {
   Building2,
   FileSpreadsheet,
   LogIn,
+  LogOut,
 } from 'lucide-react';
 import {
   formatCurrency,
@@ -36,6 +37,7 @@ export const Header: React.FC = () => {
     setCurrentPage,
     isFirebaseAuthenticated,
     setIsAuthModalOpen,
+    logout,
   } = useApp();
 
   const { actualTheme, toggleTheme } = useTheme();
@@ -423,6 +425,17 @@ export const Header: React.FC = () => {
                   : 'text-slate-400'
               }`}
             />
+          </button>
+        )}
+
+        {isFirebaseAuthenticated && (
+          <button
+            onClick={logout}
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer hidden sm:flex items-center justify-center"
+            title="Uitloggen"
+            aria-label="Uitloggen"
+          >
+            <LogOut className="w-4 h-4" />
           </button>
         )}
 

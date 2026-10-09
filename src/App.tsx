@@ -18,8 +18,10 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { ReportsPage } from './components/reports/ReportsPage';
 import { ImportExportModal } from './components/settings/ImportExportModal';
 import { AuthModal } from './components/auth/AuthModal';
+import { LoginPage } from './components/auth/LoginPage';
 import { UndoToast } from './components/common/UndoToast';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
+import { Loader2 } from 'lucide-react';
 
 const DashboardContent: React.FC = () => {
   const {
@@ -101,11 +103,38 @@ const DashboardContent: React.FC = () => {
   );
 };
 
+const AppNavigation: React.FC = () => {
+  const { isFirebaseAuthenticated, isLoadingAuth } = useApp();
+
+  if (isLoadingAuth) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-600/30">
+            CW
+          </div>
+          <span className="text-xl font-bold tracking-tight">ContractWatch</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
+          <span>Inlogsessie verifiëren...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isFirebaseAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return <DashboardContent />;
+};
+
 export default function App() {
   return (
     <ThemeProvider>
       <AppProvider>
-        <DashboardContent />
+        <AppNavigation />
       </AppProvider>
     </ThemeProvider>
   );

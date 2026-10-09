@@ -359,8 +359,6 @@ export async function registerWithEmail(
       await updateProfile(userCredential.user, { displayName });
     }
     await syncUserProfile(userCredential.user, 'email', displayName);
-    // Seed initial demo contracts for new registered user
-    await seedDemoContractsInFirestore(userCredential.user.uid);
     return { success: true, user: userCredential.user };
   } catch (err: any) {
     return { success: false, error: formatAuthError(err) };
@@ -380,12 +378,7 @@ export async function loginWithEmail(email: string, pass: string): Promise<AuthA
 export async function loginWithGoogle(): Promise<AuthActionResult> {
   try {
     const userCredential = await signInWithPopup(auth, googleProvider);
-    const existing = await fetchUserContractsFromFirestore(userCredential.user.uid).catch(() => []);
     await syncUserProfile(userCredential.user, 'google');
-    // If brand new user with 0 contracts, seed demo contracts
-    if (!existing || existing.length === 0) {
-      await seedDemoContractsInFirestore(userCredential.user.uid).catch(() => []);
-    }
     return { success: true, user: userCredential.user };
   } catch (err: any) {
     return { success: false, error: formatAuthError(err) };
@@ -395,12 +388,7 @@ export async function loginWithGoogle(): Promise<AuthActionResult> {
 export async function loginWithApple(): Promise<AuthActionResult> {
   try {
     const userCredential = await signInWithPopup(auth, appleProvider);
-    const existing = await fetchUserContractsFromFirestore(userCredential.user.uid).catch(() => []);
     await syncUserProfile(userCredential.user, 'apple');
-    // If brand new user with 0 contracts, seed demo contracts
-    if (!existing || existing.length === 0) {
-      await seedDemoContractsInFirestore(userCredential.user.uid).catch(() => []);
-    }
     return { success: true, user: userCredential.user };
   } catch (err: any) {
     return { success: false, error: formatAuthError(err) };

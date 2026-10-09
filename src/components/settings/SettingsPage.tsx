@@ -33,6 +33,7 @@ import {
   Layers,
   Plus,
   Tag,
+  LogOut,
 } from 'lucide-react';
 import { downloadICS } from '../../lib/icsExport';
 import { exportFile } from '../../lib/fileExportHelper';
@@ -66,6 +67,7 @@ export const SettingsPage: React.FC = () => {
     lastSyncTime,
     syncWithFirebase,
     setIsAuthModalOpen,
+    logout,
   } = useApp();
 
   const { theme, setTheme } = useTheme();
@@ -450,6 +452,16 @@ export const SettingsPage: React.FC = () => {
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Private & Local</span>
             </span>
+            {isFirebaseAuthenticated && (
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900/60 transition cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Uitloggen</span>
+              </button>
+            )}
           </div>
         </div>
 
