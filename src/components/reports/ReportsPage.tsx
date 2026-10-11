@@ -42,8 +42,6 @@ import {
   Plus,
   SlidersHorizontal,
   CheckCircle2,
-  FileCheck,
-  Sparkles,
   X,
   FileDown,
   Share2,
@@ -84,7 +82,7 @@ export const ReportsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'urgent' | 'expired'>('all');
   const [coverageFilter, setCoverageFilter] = useState<'all' | 'family' | 'individual'>('all');
   const [docsOnly, setDocsOnly] = useState(false);
-  const [categorySortBy, setCategorySortBy] = useState<'spend' | 'name' | 'count'>('spend');
+  const [categorySortBy, setCategorySortBy] = useState<'name' | 'spend' | 'count'>('name');
 
   // Collapsed state per category
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
@@ -345,6 +343,38 @@ export const ReportsPage: React.FC = () => {
     return categories
       .map((cat) => {
         const catContracts = filteredContracts.filter((c) => c.categoryId === cat.id);
+
+        // Sort contracts inside category by subcategory (A-Z) and then contract name (A-Z)
+        const sortedCatContracts = [...catContracts].sort((a, b) => {
+          const subA = (a.subcategory || 'Algemeen').trim();
+          const subB = (b.subcategory || 'Algemeen').trim();
+          const subComp = subA.localeCompare(subB, undefined, { sensitivity: 'base' });
+          if (subComp !== 0) return subComp;
+          return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+        });
+
+        // Group into subcategory blocks, preserving alphabetical subcategory order
+        const subcategoryMap = new Map<string, Contract[]>();
+        sortedCatContracts.forEach((contract) => {
+          const sub = (contract.subcategory || 'Algemeen').trim();
+          if (!subcategoryMap.has(sub)) {
+            subcategoryMap.set(sub, []);
+          }
+          subcategoryMap.get(sub)!.push(contract);
+        });
+
+        const subcategoryGroups = Array.from(subcategoryMap.entries()).map(([subcategoryName, subContracts]) => ({
+          subcategoryName,
+          contracts: subContracts,
+          activeCount: subContracts.filter((c) => c.status === 'active').length,
+          annualSpend: subContracts
+            .filter((c) => c.status === 'active')
+            .reduce((sum, c) => sum + (c.annualCost || 0), 0),
+          monthlySpend: subContracts
+            .filter((c) => c.status === 'active')
+            .reduce((sum, c) => sum + (c.monthlyCost || 0), 0),
+        }));
+
         const activeCatContracts = catContracts.filter((c) => c.status === 'active');
         const catAnnualSpend = activeCatContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
         const catMonthlySpend = activeCatContracts.reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
@@ -353,7 +383,8 @@ export const ReportsPage: React.FC = () => {
 
         return {
           category: cat,
-          contracts: catContracts,
+          contracts: sortedCatContracts,
+          subcategoryGroups,
           activeCount: activeCatContracts.length,
           totalCount: catContracts.length,
           annualSpend: catAnnualSpend,
@@ -370,7 +401,7 @@ export const ReportsPage: React.FC = () => {
         if (categorySortBy === 'count') {
           return b.totalCount - a.totalCount;
         }
-        return a.category.name.localeCompare(b.category.name);
+        return a.category.name.localeCompare(b.category.name, undefined, { sensitivity: 'base' });
       });
   }, [categories, filteredContracts, totalAnnualSpend, categorySortBy, selectedCategoryFilter]);
 
@@ -414,7 +445,7 @@ export const ReportsPage: React.FC = () => {
             ) : (
               <FileDown className="w-3.5 h-3.5" />
             )}
-            <span>Export PDF</span>
+            <span>Export PDF (Landscape)</span>
           </button>
         </div>
       </div>
@@ -447,7 +478,7 @@ export const ReportsPage: React.FC = () => {
         </div>
 
         {/* Executive KPI Totaaloverzicht */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
           <div className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
             <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
               Total Annual Spend
@@ -469,19 +500,6 @@ export const ReportsPage: React.FC = () => {
             </div>
             <div className="text-[10px] text-slate-400 mt-0.5">
               {totalActiveContracts.length} active · {contracts.length - totalActiveContracts.length} inactive
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              Document Archives
-            </div>
-            <div className="text-lg sm:text-xl font-bold font-mono text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1.5">
-              <FileCheck className="w-5 h-5 text-indigo-500" />
-              <span>{totalDocuments} files</span>
-            </div>
-            <div className="text-[10px] text-slate-400 mt-0.5">
-              Linked across portfolio
             </div>
           </div>
 
@@ -563,13 +581,13 @@ export const ReportsPage: React.FC = () => {
           {/* Family vs Individual Coverage Split */}
           <div className="mt-4 pt-3.5 border-t border-dashed border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-300">
-              <span>Dekking Verdeling (Coverage Scope):</span>
+              <span>Coverage Scope Distribution:</span>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-200/50 dark:border-purple-800/50">
                 <Users className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                 <span className="font-semibold">Family:</span>
-                <span>{familyContracts.length} contracten</span>
+                <span>{familyContracts.length} {familyContracts.length === 1 ? 'contract' : 'contracts'}</span>
                 <span className="font-mono text-[11px] text-purple-600/80 dark:text-purple-400/80">
                   ({formatCurrency(familyActiveSpend, user.settings.currency)}/yr)
                 </span>
@@ -577,7 +595,7 @@ export const ReportsPage: React.FC = () => {
               <div className="flex items-center gap-1.5 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-200/50 dark:border-blue-800/50">
                 <UserIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span className="font-semibold">Individual:</span>
-                <span>{individualContracts.length} contracten</span>
+                <span>{individualContracts.length} {individualContracts.length === 1 ? 'contract' : 'contracts'}</span>
                 <span className="font-mono text-[11px] text-blue-600/80 dark:text-blue-400/80">
                   ({formatCurrency(individualActiveSpend, user.settings.currency)}/yr)
                 </span>
@@ -629,16 +647,16 @@ export const ReportsPage: React.FC = () => {
             <option value="expired">Expired / Cancelled</option>
           </select>
 
-          {/* Coverage Scope Filter: Family / Individual / Allebei */}
+          {/* Coverage Scope Filter: Family / Individual / All */}
           <select
             value={coverageFilter}
             onChange={(e) => setCoverageFilter(e.target.value as any)}
             className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
-            aria-label="Filter op dekking"
+            aria-label="Filter by coverage scope"
           >
-            <option value="all">Dekking: Allebei ({contracts.length})</option>
-            <option value="family">Family / Gezin ({familyContracts.length})</option>
-            <option value="individual">Individual / Individueel ({individualContracts.length})</option>
+            <option value="all">Coverage: All ({contracts.length})</option>
+            <option value="family">Family ({familyContracts.length})</option>
+            <option value="individual">Individual ({individualContracts.length})</option>
           </select>
 
           {/* Has Documents checkbox toggle */}
@@ -657,10 +675,11 @@ export const ReportsPage: React.FC = () => {
             value={categorySortBy}
             onChange={(e) => setCategorySortBy(e.target.value as any)}
             className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+            aria-label="Sort reports overview"
           >
-            <option value="spend">Sort Categories: Highest Spend</option>
-            <option value="count">Sort Categories: Most Contracts</option>
-            <option value="name">Sort Categories: Alphabetical</option>
+            <option value="name">Sort: Category & Subcategory (A-Z)</option>
+            <option value="spend">Sort: Highest Spend</option>
+            <option value="count">Sort: Most Contracts</option>
           </select>
 
           {/* Expand / Collapse All */}
@@ -756,39 +775,48 @@ export const ReportsPage: React.FC = () => {
                         ~{formatCurrency(item.monthlySpend, user.settings.currency)} / mo
                       </div>
                     </div>
-
-                    {item.category.comparisonUrlDefault && (
-                      <a
-                        href={item.category.comparisonUrlDefault}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition"
-                        title={`Compare ${item.category.name} deals online`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Compare Deals</span>
-                        <ExternalLink className="w-3 h-3 ml-0.5" />
-                      </a>
-                    )}
                   </div>
                 </div>
 
                 {/* Contracts List inside Category */}
                 {!isCollapsed && (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <div>
                     {item.contracts.length === 0 ? (
                       <div className="p-6 text-center text-xs text-slate-400">
-                        No contracts in this category matching the current report filter.
+                        No contracts in this category matching the current filter.
                       </div>
                     ) : (
-                      item.contracts.map((contract) => {
-                        const daysRemaining = getDaysRemaining(contract.cancellationDeadline);
-                        const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
-                        const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
-                        const hasDocs = contract.documentLinks && contract.documentLinks.length > 0;
+                      <div className="space-y-0">
+                        {item.subcategoryGroups.map((subGroup) => (
+                          <div
+                            key={subGroup.subcategoryName}
+                            className="border-b last:border-b-0 border-slate-100 dark:border-slate-800"
+                          >
+                            {/* Subcategory Header Banner */}
+                            <div className="px-5 py-2.5 bg-slate-50/75 dark:bg-slate-850/50 border-t first:border-t-0 border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {subGroup.subcategoryName}
+                                </span>
+                                <span className="text-[11px] font-normal text-slate-400">
+                                  ({subGroup.contracts.length} {subGroup.contracts.length === 1 ? 'contract' : 'contracts'})
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                                {formatCurrency(subGroup.annualSpend, user.settings.currency)} / yr
+                              </div>
+                            </div>
 
-                        return (
+                            {/* Contracts under this subcategory */}
+                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {subGroup.contracts.map((contract) => {
+                                const daysRemaining = getDaysRemaining(contract.cancellationDeadline);
+                                const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
+                                const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
+                                const hasDocs = contract.documentLinks && contract.documentLinks.length > 0;
+
+                                return (
                           <div
                             key={contract.id}
                             className="p-5 hover:bg-slate-50/50 dark:hover:bg-slate-850/40 transition flex flex-col lg:flex-row lg:items-start justify-between gap-5"
@@ -1040,7 +1068,11 @@ export const ReportsPage: React.FC = () => {
                             </div>
                           </div>
                         );
-                      })
+                      })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
@@ -1062,10 +1094,10 @@ export const ReportsPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    PDF Report Dossier (iPad)
+                    PDF Report Dossier (Landscape)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    View the report directly or save to Files
+                    View the landscape report directly or save to Files
                   </p>
                 </div>
               </div>

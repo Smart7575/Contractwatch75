@@ -37,7 +37,15 @@ export function exportContractsToCSV(contracts: Contract[]): string {
     'Is Demo',
   ];
 
-  const rows = contracts.map((c) => [
+  const sortedContracts = [...contracts].sort((a, b) => {
+    const catComp = (a.categoryId || '').localeCompare(b.categoryId || '', undefined, { sensitivity: 'base' });
+    if (catComp !== 0) return catComp;
+    const subComp = (a.subcategory || '').localeCompare(b.subcategory || '', undefined, { sensitivity: 'base' });
+    if (subComp !== 0) return subComp;
+    return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+  });
+
+  const rows = sortedContracts.map((c) => [
     `"${(c.name || '').replace(/"/g, '""')}"`,
     `"${(c.categoryId || '').replace(/"/g, '""')}"`,
     `"${(c.subcategory || '').replace(/"/g, '""')}"`,

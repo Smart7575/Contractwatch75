@@ -176,7 +176,7 @@ export function formatCurrency(
     maximumFractionDigits: 2,
   });
 
-  if (!currency) return `€${formattedNum}`;
+  if (!currency) return `€ ${formattedNum}`;
 
   // If explicit custom letter prefix e.g. "custom:kr" or "custom:EUR"
   if (currency.startsWith('custom:')) {
@@ -186,10 +186,13 @@ export function formatCurrency(
 
   // Standard presets mapping
   const presets: Record<string, string> = {
-    EUR: '€',
-    USD: '$',
-    GBP: '£',
+    EUR: '€ ',
+    USD: '$ ',
+    GBP: '£ ',
     CHF: 'CHF ',
+    '€': '€ ',
+    '$': '$ ',
+    '£': '£ ',
   };
 
   if (presets[currency]) {
@@ -198,6 +201,6 @@ export function formatCurrency(
 
   // Any custom letter-based currency input (e.g. "kr", "DKK", "SEK", "CAD", "AUD")
   const trimmed = currency.trim();
-  const prefix = /^[A-Za-z\u00C0-\u024F]+$/.test(trimmed) ? `${trimmed} ` : `${trimmed} `;
+  const prefix = trimmed.endsWith(' ') ? trimmed : `${trimmed} `;
   return `${prefix}${formattedNum}`;
 }

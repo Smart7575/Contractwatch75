@@ -11,9 +11,19 @@ export function generatePrintableHTML(
   const totalMonthlySpend = activeContracts.reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
   const totalDocs = contracts.reduce((sum, c) => sum + (c.documentLinks?.length || 0), 0);
 
-  const categoriesHtml = categories
+  const sortedCategories = [...categories]
+    .filter((cat) => contracts.some((c) => c.categoryId === cat.id))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+  const categoriesHtml = sortedCategories
     .map((cat) => {
-      const catContracts = contracts.filter((c) => c.categoryId === cat.id);
+      const catContracts = contracts
+        .filter((c) => c.categoryId === cat.id)
+        .sort((a, b) => {
+          const subComp = (a.subcategory || 'Algemeen').localeCompare(b.subcategory || 'Algemeen', undefined, { sensitivity: 'base' });
+          if (subComp !== 0) return subComp;
+          return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+        });
       if (catContracts.length === 0) return '';
 
       const catSpend = catContracts
