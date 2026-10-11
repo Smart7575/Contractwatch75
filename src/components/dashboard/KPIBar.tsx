@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency, getDaysRemaining } from '../../lib/dateUtils';
-import { FileText, ShieldAlert, Sparkles, Wallet } from 'lucide-react';
+import { FileText, ShieldAlert, Wallet } from 'lucide-react';
 
 export const KPIBar: React.FC = () => {
   const { contracts, user, setFilters, filters } = useApp();
@@ -9,13 +9,6 @@ export const KPIBar: React.FC = () => {
   const activeContracts = contracts.filter((c) => c.status === 'active');
   const totalAnnualCost = activeContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const totalMonthlyCost = totalAnnualCost / 12;
-
-  // Contracts freeing up in <= 90 days (renegotiation pool, strictly upcoming > 30d and <= 90d)
-  const freeingUpContracts = activeContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
-    return days > 30 && days <= 90;
-  });
-  const freeingUpCost = freeingUpContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
   // Action required: active contracts where cancellation deadline is within the next 30 days (0 <= days <= 30).
   // Overdue contracts (days < 0) are excluded because it is already too late for notice action.
@@ -30,7 +23,7 @@ export const KPIBar: React.FC = () => {
   });
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-5">
       {/* KPI 1: Active Contracts */}
       <button
         onClick={() => setFilters({ status: 'active', urgency: 'all' })}
@@ -66,28 +59,7 @@ export const KPIBar: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI 3: Actionable Renegotiation Pool (Freeing up 31–90 days) */}
-      <button
-        onClick={() => setFilters({ urgency: '31_90', status: 'active' })}
-        className={`p-3 sm:p-4 rounded-xl text-left border transition-all cursor-pointer ${
-          filters.urgency === '31_90'
-            ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/20'
-            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-        }`}
-      >
-        <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-          <span className="text-xs font-medium">Freeing up 31–90d</span>
-          <Sparkles className="w-4 h-4 text-amber-500" />
-        </div>
-        <div className="text-xl sm:text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 font-mono tabular-nums">
-          {formatCurrency(freeingUpCost, user.settings.currency)}
-        </div>
-        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-          {freeingUpContracts.length} contract{freeingUpContracts.length === 1 ? '' : 's'} eligible for switch
-        </div>
-      </button>
-
-      {/* KPI 4: Action Required Now (0 <= days <= 30, strictly not overdue) */}
+      {/* KPI 3: Action Required Now (0 <= days <= 30, strictly not overdue) */}
       <button
         onClick={() => setFilters({ urgency: 'next_30', status: 'active' })}
         className={`p-3 sm:p-4 rounded-xl text-left border transition-all cursor-pointer ${

@@ -47,6 +47,9 @@ import {
   Share2,
   Tablet,
   Eye,
+  EyeOff,
+  Key,
+  Lock,
   Loader2,
   Copy,
   Check,
@@ -106,6 +109,24 @@ export const ReportsPage: React.FC = () => {
     count: number;
   } | null>(null);
   const [csvCopied, setCsvCopied] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [copiedCredKey, setCopiedCredKey] = useState<string | null>(null);
+
+  const togglePasswordVisibility = (contractId: string) => {
+    setVisiblePasswords((prev) => ({
+      ...prev,
+      [contractId]: !prev[contractId],
+    }));
+  };
+
+  const copyCredentialText = (text: string, key: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedCredKey(key);
+    setTimeout(() => {
+      setCopiedCredKey(null);
+    }, 2000);
+  };
 
   const isAppleTouch = useMemo(() => isAppleTouchDevice(), []);
 
@@ -1034,6 +1055,135 @@ export const ReportsPage: React.FC = () => {
                                   )}
                                 </div>
                               )}
+
+                              {/* Login Credentials Section (Website login link, username, password) */}
+                              {contract.credentials && (contract.credentials.url || contract.credentials.username || contract.credentials.password) ? (
+                                <div className="mt-2.5 p-3 rounded-xl bg-slate-50/80 dark:bg-slate-850/60 border border-slate-200/80 dark:border-slate-800 text-xs">
+                                  <div className="flex items-center justify-between gap-2 mb-2 font-semibold text-slate-700 dark:text-slate-300">
+                                    <div className="flex items-center gap-1.5">
+                                      <Key className="w-3.5 h-3.5 text-indigo-500" />
+                                      <span>Login Credentials & Account Portal:</span>
+                                    </div>
+                                    {contract.credentials.url && (
+                                      <a
+                                        href={contract.credentials.url.startsWith('http') ? contract.credentials.url : `https://${contract.credentials.url}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-semibold text-[11px] transition"
+                                      >
+                                        <span>Open Login Portal</span>
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    {/* Portal Link */}
+                                    <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                                        Login Website / Link
+                                      </span>
+                                      {contract.credentials.url ? (
+                                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                                          <a
+                                            href={contract.credentials.url.startsWith('http') ? contract.credentials.url : `https://${contract.credentials.url}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs font-mono text-indigo-600 dark:text-indigo-400 hover:underline truncate block"
+                                            title={contract.credentials.url}
+                                          >
+                                            {contract.credentials.url}
+                                          </a>
+                                          <button
+                                            type="button"
+                                            onClick={() => copyCredentialText(contract.credentials!.url!, `${contract.id}-url`)}
+                                            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer shrink-0"
+                                            title="Copy login URL"
+                                          >
+                                            {copiedCredKey === `${contract.id}-url` ? (
+                                              <Check className="w-3 h-3 text-emerald-500" />
+                                            ) : (
+                                              <Copy className="w-3 h-3" />
+                                            )}
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-slate-400 italic mt-0.5 block">—</span>
+                                      )}
+                                    </div>
+
+                                    {/* Username */}
+                                    <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                                        Username / Email
+                                      </span>
+                                      {contract.credentials.username ? (
+                                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                                          <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 truncate block">
+                                            {contract.credentials.username}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => copyCredentialText(contract.credentials!.username!, `${contract.id}-user`)}
+                                            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer shrink-0"
+                                            title="Copy username"
+                                          >
+                                            {copiedCredKey === `${contract.id}-user` ? (
+                                              <Check className="w-3 h-3 text-emerald-500" />
+                                            ) : (
+                                              <Copy className="w-3 h-3" />
+                                            )}
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-slate-400 italic mt-0.5 block">—</span>
+                                      )}
+                                    </div>
+
+                                    {/* Password */}
+                                    <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 min-w-0">
+                                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                                        Password
+                                      </span>
+                                      {contract.credentials.password ? (
+                                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                                          <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 truncate block">
+                                            {visiblePasswords[contract.id] === false ? '••••••••••••' : contract.credentials.password}
+                                          </span>
+                                          <div className="flex items-center gap-0.5 shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={() => togglePasswordVisibility(contract.id)}
+                                              className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
+                                              title={visiblePasswords[contract.id] === false ? 'Show password' : 'Hide password'}
+                                            >
+                                              {visiblePasswords[contract.id] === false ? (
+                                                <Eye className="w-3 h-3" />
+                                              ) : (
+                                                <EyeOff className="w-3 h-3" />
+                                              )}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => copyCredentialText(contract.credentials!.password!, `${contract.id}-pass`)}
+                                              className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
+                                              title="Copy password"
+                                            >
+                                              {copiedCredKey === `${contract.id}-pass` ? (
+                                                <Check className="w-3 h-3 text-emerald-500" />
+                                              ) : (
+                                                <Copy className="w-3 h-3" />
+                                              )}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-slate-400 italic mt-0.5 block">—</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
 
                             {/* Right Column: Pricing & Actions */}

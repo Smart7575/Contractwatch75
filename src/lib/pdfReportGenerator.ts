@@ -463,8 +463,15 @@ export function createPortfolioPDFDoc(
           });
         }
 
-        // Height calculation for 2-column contract card with 3-cell metadata grid
-        const baseHeight = 31.0;
+        // Check credentials presence
+        const creds = contract.credentials;
+        const hasCreds = Boolean(
+          creds && (creds.url || creds.username || creds.password)
+        );
+        const credsHeight = hasCreds ? 4.8 : 0;
+
+        // Height calculation for contract card with 3-cell metadata grid, docs and credentials
+        const baseHeight = 31.0 + credsHeight;
         const estimatedContractHeight = baseHeight + (docLinesCount - 1) * 4.2;
 
         checkPageBreak(estimatedContractHeight + 3);
@@ -718,6 +725,82 @@ export function createPortfolioPDFDoc(
           doc.setFontSize(7.5);
           doc.setTextColor(148, 163, 184);
           doc.text('No documents attached to this contract yet.', docCurX, docCurY);
+        }
+
+        // ==========================================
+        // ROW 5: Login Credentials Section
+        // (Website Login Link klikbaar, Username, Password)
+        // ==========================================
+        if (hasCreds) {
+          const credY = docCurY + 4.2;
+          let credX = margin + 6;
+
+          // Key icon indicator prefix
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7.0);
+          doc.setTextColor(79, 70, 229); // Indigo 600
+          doc.text('Account Login:', credX, credY);
+          credX += doc.getTextWidth('Account Login:') + 2.0;
+
+          // Portal URL Link (clickable in blue font)
+          if (creds?.url) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.0);
+            doc.setTextColor(71, 85, 105);
+            doc.text('Portal: ', credX, credY);
+            credX += doc.getTextWidth('Portal: ');
+
+            const rawCredUrl = creds.url.trim();
+            const cleanCredUrl = rawCredUrl.startsWith('http://') || rawCredUrl.startsWith('https://')
+              ? rawCredUrl
+              : `https://${rawCredUrl}`;
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.0);
+            doc.setTextColor(29, 78, 216); // Royal Blue #1d4ed8
+            const displayUrl = rawCredUrl.length > 45 ? rawCredUrl.substring(0, 42) + '...' : rawCredUrl;
+            doc.textWithLink(displayUrl, credX, credY, { url: cleanCredUrl });
+            credX += doc.getTextWidth(displayUrl) + 3.0;
+
+            doc.setTextColor(148, 163, 184);
+            doc.text('·', credX, credY);
+            credX += 2.5;
+          }
+
+          // Username
+          if (creds?.username) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.0);
+            doc.setTextColor(71, 85, 105);
+            doc.text('Username: ', credX, credY);
+            credX += doc.getTextWidth('Username: ');
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.0);
+            doc.setTextColor(15, 23, 42); // Slate 900
+            doc.text(creds.username, credX, credY);
+            credX += doc.getTextWidth(creds.username) + 3.0;
+
+            if (creds?.password) {
+              doc.setTextColor(148, 163, 184);
+              doc.text('·', credX, credY);
+              credX += 2.5;
+            }
+          }
+
+          // Password
+          if (creds?.password) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.0);
+            doc.setTextColor(71, 85, 105);
+            doc.text('Password: ', credX, credY);
+            credX += doc.getTextWidth('Password: ');
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.0);
+            doc.setTextColor(15, 23, 42); // Slate 900
+            doc.text(creds.password, credX, credY);
+          }
         }
 
         y += estimatedContractHeight + 3.0;

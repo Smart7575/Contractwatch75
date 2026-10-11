@@ -349,6 +349,11 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
         email: 'info@centraalbeheer.nl',
         url: 'https://www.centraalbeheer.nl/verzekeringen/autoverzekering',
       },
+      credentials: {
+        url: 'https://www.centraalbeheer.nl/inloggen',
+        username: 'smartprod7501@gmail.com',
+        password: 'CB#Secure2026!',
+      },
       notes: 'All Risk dekking inclusief inzittendenverzekering en no-claimbeschermer.',
       tags: ['Autoverzekering', 'All Risk', 'Centraal Beheer'],
       documentLinks: [
