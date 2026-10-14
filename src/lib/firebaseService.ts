@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, googleProvider, appleProvider } from './firebase';
 import { handleFirestoreError, OperationType } from './firestoreErrorHandler';
-import { Contract, User, UserSettings } from '../types';
+import { Category, Contract, User, UserSettings } from '../types';
 import { generateDemoContracts, DEFAULT_USER, isDemoContract } from './storage';
 
 export interface AuthActionResult {
@@ -71,7 +71,7 @@ export async function syncUserProfile(
   const fallbackUser: User = {
     id: fbUser.uid,
     email: fbUser.email || '',
-    name: displayName || fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'ContractWatch User'),
+    name: displayName || fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Stefan Martinali'),
     provider,
     settings: DEFAULT_USER.settings,
     createdAt: new Date().toISOString(),
@@ -81,14 +81,56 @@ export async function syncUserProfile(
     const snap = await getDoc(userRef);
     if (snap.exists()) {
       const data = snap.data();
-      return {
+      const rawName = (data.name || '').trim();
+      const isLegacyDummyName =
+        !rawName ||
+        rawName.toLowerCase().includes('jordan') ||
+        rawName.toLowerCase().includes('hayes');
+
+      const resolvedName = isLegacyDummyName
+        ? (fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Stefan Martinali'))
+        : (data.name || fbUser.displayName || displayName || fallbackUser.name);
+
+      const userSettings = data.settings || {};
+      const isLegacyDummyCurrency = userSettings.currency === 'USD' && isLegacyDummyName;
+      const isLegacyDummyTimezone = userSettings.timezone === 'America/New_York' && isLegacyDummyName;
+
+      const resolvedSettings: UserSettings = {
+        ...DEFAULT_USER.settings,
+        ...userSettings,
+        channels: {
+          ...DEFAULT_USER.settings.channels,
+          ...(userSettings.channels || {}),
+        },
+        currency: isLegacyDummyCurrency ? 'EUR' : (userSettings.currency || DEFAULT_USER.settings.currency),
+        timezone: isLegacyDummyTimezone ? 'Europe/Amsterdam' : (userSettings.timezone || DEFAULT_USER.settings.timezone),
+      };
+
+      const resolvedUser: User = {
         id: fbUser.uid,
         email: fbUser.email || data.email || fallbackUser.email,
-        name: fbUser.displayName || displayName || data.name || fallbackUser.name,
+        name: resolvedName,
         provider: data.provider || provider,
-        settings: data.settings || DEFAULT_USER.settings,
+        settings: resolvedSettings,
         createdAt: data.createdAt || fallbackUser.createdAt,
       };
+
+      // If legacy dummy data was detected in Firestore, overwrite it in the cloud database immediately
+      if (isLegacyDummyName || isLegacyDummyCurrency || isLegacyDummyTimezone) {
+        setDoc(
+          userRef,
+          cleanForFirestore({
+            name: resolvedName,
+            settings: resolvedSettings,
+            updatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        ).catch((err) => {
+          console.warn('Could not auto-update legacy profile in Firestore:', err);
+        });
+      }
+
+      return resolvedUser;
     }
 
     // If doc does not exist, write the initial profile
@@ -114,6 +156,38 @@ export async function syncUserProfile(
       updatedAt: new Date().toISOString(),
     }, { merge: true }).catch(() => {});
     return fallbackUser;
+  }
+}
+
+/**
+ * Update user profile (name, settings) in Firestore
+ */
+export async function updateFirestoreUserProfile(
+  userId: string,
+  updates: { name?: string; email?: string; settings?: Partial<UserSettings> }
+): Promise<void> {
+  const userRef = doc(db, 'users', userId);
+  try {
+    const snap = await getDoc(userRef);
+    const current = snap.exists() ? snap.data() : {};
+    const payload: any = {
+      updatedAt: new Date().toISOString(),
+    };
+    if (updates.name !== undefined) {
+      payload.name = updates.name.trim();
+    }
+    if (updates.email !== undefined) {
+      payload.email = updates.email.trim();
+    }
+    if (updates.settings !== undefined) {
+      payload.settings = {
+        ...(current.settings || DEFAULT_USER.settings),
+        ...updates.settings,
+      };
+    }
+    await setDoc(userRef, cleanForFirestore(payload), { merge: true });
+  } catch (error) {
+    console.warn('Could not update user profile in Firestore:', error);
   }
 }
 
@@ -153,12 +227,17 @@ export async function updateFirestoreUserSettings(
     const snap = await getDoc(userRef);
     if (snap.exists()) {
       const current = snap.data();
+      const currentSettings = current.settings || DEFAULT_USER.settings;
       await setDoc(
         userRef,
         cleanForFirestore({
           settings: {
-            ...(current.settings || DEFAULT_USER.settings),
+            ...currentSettings,
             ...settings,
+            channels: {
+              ...(currentSettings.channels || DEFAULT_USER.settings.channels),
+              ...(settings.channels || {}),
+            },
           },
           updatedAt: new Date().toISOString(),
         }),
@@ -259,6 +338,50 @@ export async function deleteContractFromFirestore(userId: string, contractId: st
   } catch (error) {
     console.error('Could not delete contract from Firestore:', error);
     handleFirestoreError(error, OperationType.DELETE, contractPath);
+  }
+}
+
+/**
+ * Categories Firestore CRUD
+ */
+export async function fetchUserCategoriesFromFirestore(userId: string): Promise<Category[]> {
+  try {
+    const catsRef = collection(db, 'users', userId, 'categories');
+    const querySnapshot = await getDocs(catsRef);
+    const categories: Category[] = [];
+    querySnapshot.forEach((docSnap) => {
+      categories.push(docSnap.data() as Category);
+    });
+    return categories;
+  } catch (error) {
+    console.warn('Could not fetch categories from Firestore:', error);
+    return [];
+  }
+}
+
+export async function saveCategoryToFirestore(userId: string, category: Category): Promise<void> {
+  const catPath = `users/${userId}/categories/${category.id}`;
+  try {
+    const catRef = doc(db, 'users', userId, 'categories', category.id);
+    const cleaned = cleanForFirestore({
+      ...category,
+      userId,
+    });
+    await setDoc(catRef, cleaned, { merge: true });
+  } catch (error) {
+    console.error('Could not save category to Firestore:', error);
+    handleFirestoreError(error, OperationType.WRITE, catPath);
+  }
+}
+
+export async function deleteCategoryFromFirestore(userId: string, categoryId: string): Promise<void> {
+  const catPath = `users/${userId}/categories/${categoryId}`;
+  try {
+    const catRef = doc(db, 'users', userId, 'categories', categoryId);
+    await deleteDoc(catRef);
+  } catch (error) {
+    console.error('Could not delete category from Firestore:', error);
+    handleFirestoreError(error, OperationType.DELETE, catPath);
   }
 }
 

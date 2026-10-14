@@ -82,27 +82,27 @@ export const DEFAULT_CATEGORIES: Category[] = [
 ];
 
 export const DEFAULT_USER: User = {
-  id: 'usr_demo_us',
-  email: 'jordan.hayes@example.com',
-  name: 'Jordan Hayes',
+  id: 'usr_default',
+  email: 'stefan.martinali@example.com',
+  name: 'Stefan Martinali',
   provider: 'email',
   settings: {
     theme: 'light',
-    currency: 'USD',
-    timezone: 'America/New_York',
+    currency: 'EUR',
+    timezone: 'Europe/Amsterdam',
     language: 'en',
     defaultReminders: [90, 60, 30, 14, 7, 0],
     channels: {
       inApp: true,
-      email: true,
-      webPush: true,
-      weeklyDigest: true,
+      email: false,
+      webPush: false,
+      weeklyDigest: false,
     },
     comparisonSites: {
-      energy: 'https://www.energysage.com',
-      telecom: 'https://www.broadbandnow.com',
-      insurance: 'https://www.policygenius.com',
-      subscriptions: 'https://www.nerdwallet.com',
+      energy: 'https://www.gaslicht.com',
+      telecom: 'https://www.bellen.com',
+      insurance: 'https://www.independer.nl',
+      subscriptions: 'https://www.consumentenbond.nl',
     },
   },
   createdAt: '2026-01-15T10:00:00.000Z',
@@ -326,9 +326,9 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
     {
       id: 'demo_us_5',
       userId,
-      name: 'Autoverzekering All Risk',
+      name: 'Car Insurance All-Risk',
       categoryId: 'insurance',
-      subcategory: 'Autoverzekering',
+      subcategory: 'Car',
       coverageType: 'individual',
       supplier: 'Centraal Beheer',
       contractNumber: 'CB-AUTO-771928',
@@ -339,7 +339,7 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
       cancellationDeadline: '2026-10-19', // 17 days left!
       isDeadlineOverridden: false,
       autoRenew: true,
-      renewalPeriod: '12-maanden polisverlenging',
+      renewalPeriod: '12-month policy renewal',
       annualCost: 1440,
       monthlyCost: 120,
       paymentFrequency: 'monthly',
@@ -354,13 +354,13 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
         username: 'smartprod7501@gmail.com',
         password: 'CB#Secure2026!',
       },
-      notes: 'All Risk dekking inclusief inzittendenverzekering en no-claimbeschermer.',
-      tags: ['Autoverzekering', 'All Risk', 'Centraal Beheer'],
+      notes: 'Comprehensive All-Risk coverage including passenger insurance and no-claim discount protection.',
+      tags: ['Car Insurance', 'All Risk', 'Centraal Beheer'],
       documentLinks: [
         {
           id: 'doc_auto_1',
           contractId: 'demo_us_5',
-          title: 'Polisblad',
+          title: 'Policy Schedule',
           type: 'policy',
           url: 'https://storage.googleapis.com/contractwatch-demo/polisblad_autoverzekering.pdf',
           provider: 'gdrive',
@@ -369,7 +369,7 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
         {
           id: 'doc_auto_2',
           contractId: 'demo_us_5',
-          title: 'Digitale groene kaart',
+          title: 'Digital Green Card',
           type: 'terms',
           url: 'https://storage.googleapis.com/contractwatch-demo/digitale_groene_kaart.pdf',
           provider: 'gdrive',
@@ -378,7 +378,7 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
         {
           id: 'doc_auto_3',
           contractId: 'demo_us_5',
-          title: 'Voorwaarden WA',
+          title: 'Third-Party Liability Terms',
           type: 'terms',
           url: 'https://storage.googleapis.com/contractwatch-demo/voorwaarden_wa.pdf',
           provider: 'onedrive',
@@ -387,7 +387,7 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
         {
           id: 'doc_auto_4',
           contractId: 'demo_us_5',
-          title: 'Overige voorwaarden excl. WA',
+          title: 'General Policy Conditions excl. Third-Party',
           type: 'terms',
           url: 'https://storage.googleapis.com/contractwatch-demo/overige_voorwaarden_excl_wa.pdf',
           provider: 'dropbox',
@@ -643,12 +643,29 @@ export function loadUser(): User {
     const raw = localStorage.getItem(STORAGE_KEYS.USER);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Migrate legacy Dutch demo user if detected
-      if (parsed.email === 'alex.vanleeuwen@example.com' || parsed.settings?.currency === 'EUR') {
-        saveUser(DEFAULT_USER);
-        return DEFAULT_USER;
+      if (parsed) {
+        const rawName = (parsed.name || '').toLowerCase();
+        const isLegacyDummy =
+          rawName.includes('jordan') ||
+          rawName.includes('hayes') ||
+          (parsed.name === 'Stefan Martinali' && parsed.settings?.currency === 'USD');
+
+        if (isLegacyDummy) {
+          const sanitized: User = {
+            ...parsed,
+            name: rawName.includes('jordan') || rawName.includes('hayes') ? 'Stefan Martinali' : parsed.name,
+            settings: {
+              ...DEFAULT_USER.settings,
+              ...(parsed.settings || {}),
+              currency: parsed.settings?.currency === 'USD' ? 'EUR' : (parsed.settings?.currency || 'EUR'),
+              timezone: parsed.settings?.timezone === 'America/New_York' ? 'Europe/Amsterdam' : (parsed.settings?.timezone || 'Europe/Amsterdam'),
+            },
+          };
+          saveUser(sanitized);
+          return sanitized;
+        }
+        return parsed;
       }
-      return parsed;
     }
   } catch (err) {
     console.error('Failed to load user', err);

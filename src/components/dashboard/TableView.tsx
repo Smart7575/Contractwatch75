@@ -99,7 +99,7 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
                   <div className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex items-center gap-1.5">
                     <span className="truncate">{contract.name}</span>
                     {contract.credentials && (contract.credentials.url || contract.credentials.username || contract.credentials.password) && (
-                      <span title="Inloggegevens geregistreerd" className="shrink-0 inline-flex items-center text-amber-500">
+                      <span title="Login credentials registered" className="shrink-0 inline-flex items-center text-amber-500">
                         <Key className="w-3 h-3" />
                       </span>
                     )}

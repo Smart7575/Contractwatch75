@@ -7,11 +7,9 @@ import {
   Sun,
   Moon,
   Settings,
-  ShieldAlert,
   Search,
   X,
   Building2,
-  FileSpreadsheet,
   LogIn,
   LogOut,
 } from 'lucide-react';
@@ -94,16 +92,6 @@ export const Header: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSearchOpen]);
 
-  // Count contracts needing urgent action (strictly active with cancellation deadline within 30 days; excludes overdue)
-  const urgentCount = contracts.filter((c) => {
-    if (c.status !== 'active') return false;
-    const days = Math.round(
-      (new Date(c.cancellationDeadline).getTime() - new Date().getTime()) /
-        (1000 * 60 * 60 * 24)
-    );
-    return days >= 0 && days <= 30;
-  }).length;
-
   const searchQuery = filters.search.trim().toLowerCase();
 
   // Real-time matched contracts by name, category, or vendor
@@ -142,7 +130,7 @@ export const Header: React.FC = () => {
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-3 sm:px-6 bg-white/95 dark:bg-slate-900/95 border-b border-slate-200 dark:border-slate-800 backdrop-blur-md transition-colors gap-2 sm:gap-4">
-      {/* Zone 1: Brand & Desktop Nav Links */}
+      {/* Zone 1: Brand */}
       <div className="flex items-center gap-3 sm:gap-6 shrink-0">
         <button
           onClick={() => setCurrentPage('dashboard')}
@@ -155,49 +143,6 @@ export const Header: React.FC = () => {
             ContractWatch
           </span>
         </button>
-
-        {/* Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-5 text-sm font-medium text-slate-600 dark:text-slate-300">
-          <button
-            onClick={() => {
-              setCurrentPage('dashboard');
-              setFilters({ urgency: 'all', status: 'active', categoryId: 'all' });
-            }}
-            className={`hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer ${
-              currentPage === 'dashboard'
-                ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
-                : ''
-            }`}
-          >
-            Radar Overview
-          </button>
-          <button
-            onClick={() => {
-              setCurrentPage('dashboard');
-              setFilters({ urgency: 'next_30', status: 'active' });
-            }}
-            className="relative flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-          >
-            <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
-            <span>Notice Deadlines</span>
-            {urgentCount > 0 && (
-              <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                ({urgentCount})
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setCurrentPage('reports')}
-            className={`flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer ${
-              currentPage === 'reports'
-                ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
-                : ''
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Reports</span>
-          </button>
-        </nav>
       </div>
 
       {/* Zone 2: Global Search Bar */}
@@ -382,7 +327,7 @@ export const Header: React.FC = () => {
           aria-label={`Notifications (${unreadCount} unread)`}
         >
           <Bell className="w-4 h-4" />
-          {unreadCount > 0 && (
+          {user.settings.channels?.inApp !== false && unreadCount > 0 && (
             <span className="absolute top-1 sm:top-1.5 right-1 sm:right-1.5 flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
@@ -432,8 +377,8 @@ export const Header: React.FC = () => {
           <button
             onClick={logout}
             className="p-1.5 sm:p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer hidden sm:flex items-center justify-center"
-            title="Uitloggen"
-            aria-label="Uitloggen"
+            title="Sign out"
+            aria-label="Sign out"
           >
             <LogOut className="w-4 h-4" />
           </button>

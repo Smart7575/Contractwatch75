@@ -40,6 +40,7 @@ import { handleFirestoreError, OperationType } from '../lib/firestoreErrorHandle
 import {
   syncUserProfile,
   updateFirestoreUserSettings,
+  updateFirestoreUserProfile,
   saveContractToFirestore,
   deleteContractFromFirestore,
   syncAllContractsToFirestore,
@@ -47,6 +48,9 @@ import {
   removeDemoContractsFromFirestore,
   deleteUserAccountCompletely,
   logoutUser,
+  saveCategoryToFirestore,
+  deleteCategoryFromFirestore,
+  fetchUserCategoriesFromFirestore,
 } from '../lib/firebaseService';
 
 interface UndoToastData {
@@ -109,15 +113,22 @@ interface AppContextType {
   addChecklistItem: (contractId: string, text: string) => void;
 
   // Categories
-  addCategory: (category: Omit<Category, 'id'>) => void;
-  updateCategory: (id: string, updates: Partial<Category>) => void;
+  addCategory: (category: Omit<Category, 'id' | 'isDefault'> & { id?: string }) => Category;
+  updateCategory: (
+    id: string,
+    updates: Partial<Category> & { id?: string },
+    subcategoryRenameMap?: Record<string, string>
+  ) => { updatedContractsCount: number };
+  deleteCategory: (id: string, reassignToCategoryId?: string) => { reassignedCount: number };
   addSubcategory: (categoryId: string, subcategoryName: string) => void;
-  removeSubcategory: (categoryId: string, subcategoryName: string) => void;
+  renameSubcategory: (categoryId: string, oldSubcat: string, newSubcat: string) => { updatedContractsCount: number };
+  removeSubcategory: (categoryId: string, subcategoryName: string, reassignToSubcategory?: string) => { updatedContractsCount: number };
 
   // Demo data & System
   handleRemoveDemoData: () => Promise<{ success: boolean; count: number }>;
   handleRestoreDemoData: () => Promise<{ success: boolean; count: number }>;
   updateUserSettings: (settings: Partial<UserSettings>) => void;
+  updateUserProfile: (updates: { name?: string; email?: string; settings?: Partial<UserSettings> }) => Promise<void>;
   
   // Notifications
   markNotificationAsRead: (id: string) => void;
@@ -347,6 +358,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Derive notifications from contracts and lead times
   const notifications = useMemo<InAppNotification[]>(() => {
+    if (user.settings.channels?.inApp === false) {
+      return [];
+    }
     const list: InAppNotification[] = [];
     const leadTimes = user.settings.defaultReminders || [90, 60, 30, 14, 7, 0];
 
@@ -410,9 +424,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Sort: overdue first, then lowest daysRemaining
     return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
-  }, [contracts, user.id, user.settings.defaultReminders]);
+  }, [contracts, user.id, user.settings.defaultReminders, user.settings.channels?.inApp]);
 
-  const unreadCount = notifications.filter((n) => n.status === 'unread').length;
+  const isBellEnabled = user.settings.channels?.inApp !== false;
+  const unreadCount = isBellEnabled
+    ? notifications.filter((n) => n.status === 'unread').length
+    : 0;
 
   const selectedContract = useMemo(() => {
     if (!selectedContractId) return null;
@@ -699,14 +716,193 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Categories
-  const addCategory = (category: Omit<Category, 'id'>) => {
-    const id = `cat_${Date.now()}`;
-    const newCat: Category = { ...category, id, isDefault: false };
+  const addCategory = (categoryData: Omit<Category, 'id' | 'isDefault'> & { id?: string }): Category => {
+    let baseId = categoryData.id?.trim() || categoryData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+    if (!baseId || baseId === '_') {
+      baseId = `cat_${Date.now()}`;
+    }
+    let id = baseId;
+    let counter = 1;
+    while (categories.some((c) => c.id === id)) {
+      id = `${baseId}_${counter++}`;
+    }
+
+    const newCat: Category = {
+      ...categoryData,
+      id,
+      name: categoryData.name.trim(),
+      icon: categoryData.icon || 'Layers',
+      color: categoryData.color || '#6366f1',
+      subcategories:
+        categoryData.subcategories && categoryData.subcategories.length > 0
+          ? categoryData.subcategories.map((s) => s.trim()).filter(Boolean)
+          : ['General'],
+      isDefault: false,
+    };
     setCategories((prev) => [...prev, newCat]);
+    if (auth.currentUser?.uid) {
+      saveCategoryToFirestore(auth.currentUser.uid, newCat).catch((err) =>
+        console.error('Failed to save category to Firestore:', err)
+      );
+    }
+    return newCat;
   };
 
-  const updateCategory = (id: string, updates: Partial<Category>) => {
-    setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+  const updateCategory = (
+    id: string,
+    updates: Partial<Category> & { id?: string },
+    subcategoryRenameMap?: Record<string, string>
+  ): { updatedContractsCount: number } => {
+    const targetId = updates.id && updates.id.trim() ? updates.id.trim() : id;
+    const isIdChanged = targetId !== id;
+
+    // 1. Update categories state
+    setCategories((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          const updated: Category = {
+            ...c,
+            ...updates,
+            id: targetId,
+            name: updates.name !== undefined ? updates.name.trim() : c.name,
+            color: updates.color !== undefined ? updates.color : c.color,
+            icon: updates.icon !== undefined ? updates.icon : c.icon,
+            subcategories:
+              updates.subcategories !== undefined
+                ? updates.subcategories.map((s) => s.trim()).filter(Boolean)
+                : c.subcategories,
+          };
+          if (auth.currentUser?.uid) {
+            saveCategoryToFirestore(auth.currentUser.uid, updated).catch((err) =>
+              console.error('Failed to save category to Firestore:', err)
+            );
+            if (isIdChanged) {
+              deleteCategoryFromFirestore(auth.currentUser.uid, id).catch((err) =>
+                console.error('Failed to delete old category from Firestore:', err)
+              );
+            }
+          }
+          return updated;
+        }
+        return c;
+      })
+    );
+
+    // 2. Cascade changes to contracts
+    let updatedContractsCount = 0;
+    const currentUid = auth.currentUser?.uid;
+    setContracts((prev) =>
+      prev.map((contract) => {
+        if (contract.categoryId === id) {
+          let hasChanges = false;
+          let newCatId = contract.categoryId;
+          let newSubcat = contract.subcategory || 'General';
+
+          // If category ID changed
+          if (isIdChanged) {
+            newCatId = targetId;
+            hasChanges = true;
+          }
+
+          // If subcategory rename mapping provided
+          if (subcategoryRenameMap && contract.subcategory) {
+            for (const [oldSub, newSub] of Object.entries(subcategoryRenameMap)) {
+              if (contract.subcategory.toLowerCase() === oldSub.trim().toLowerCase()) {
+                newSubcat = newSub.trim();
+                hasChanges = true;
+                break;
+              }
+            }
+          }
+
+          // If subcategories were updated and current subcategory was removed from category
+          if (updates.subcategories && updates.subcategories.length > 0) {
+            const trimmedNewSubs = updates.subcategories.map((s) => s.trim().toLowerCase());
+            if (!trimmedNewSubs.includes(newSubcat.trim().toLowerCase())) {
+              newSubcat = updates.subcategories[0].trim();
+              hasChanges = true;
+            }
+          }
+
+          if (hasChanges) {
+            updatedContractsCount++;
+            const updatedContract: Contract = {
+              ...contract,
+              categoryId: newCatId,
+              subcategory: newSubcat,
+              updatedAt: new Date().toISOString(),
+            };
+            if (currentUid) {
+              saveContractToFirestore(currentUid, updatedContract).catch((err) =>
+                console.error('Failed to sync updated contract to Firestore:', err)
+              );
+            }
+            return updatedContract;
+          }
+        }
+        return contract;
+      })
+    );
+
+    // If active filter was on old category, update filter too
+    if (isIdChanged && filters.categoryId === id) {
+      setFiltersState((prev) => ({ ...prev, categoryId: targetId }));
+    }
+
+    return { updatedContractsCount };
+  };
+
+  const deleteCategory = (
+    categoryId: string,
+    reassignToCategoryId?: string
+  ): { reassignedCount: number } => {
+    const remainingCategories = categories.filter((c) => c.id !== categoryId);
+    const targetCatId =
+      reassignToCategoryId ||
+      remainingCategories.find((c) => c.id === 'other')?.id ||
+      remainingCategories[0]?.id ||
+      'other';
+    const targetCat = remainingCategories.find((c) => c.id === targetCatId);
+    const targetSubcat = targetCat?.subcategories[0] || 'General';
+
+    // 1. Remove category from state and Firestore
+    setCategories((prev) => prev.filter((c) => c.id !== categoryId));
+    if (auth.currentUser?.uid) {
+      deleteCategoryFromFirestore(auth.currentUser.uid, categoryId).catch((err) =>
+        console.error('Failed to delete category from Firestore:', err)
+      );
+    }
+
+    // 2. Cascade reassignment to all contracts in this category
+    let reassignedCount = 0;
+    const currentUid = auth.currentUser?.uid;
+    setContracts((prev) =>
+      prev.map((contract) => {
+        if (contract.categoryId === categoryId) {
+          reassignedCount++;
+          const updated: Contract = {
+            ...contract,
+            categoryId: targetCatId,
+            subcategory: targetSubcat,
+            updatedAt: new Date().toISOString(),
+          };
+          if (currentUid) {
+            saveContractToFirestore(currentUid, updated).catch((err) => {
+              console.error('Failed to sync reassigned contract to Firestore:', err);
+            });
+          }
+          return updated;
+        }
+        return contract;
+      })
+    );
+
+    // Reset filter if currently filtering on deleted category
+    if (filters.categoryId === categoryId) {
+      setFiltersState((prev) => ({ ...prev, categoryId: 'all' }));
+    }
+
+    return { reassignedCount };
   };
 
   const addSubcategory = (categoryId: string, subcategoryName: string) => {
@@ -716,11 +912,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((c) => {
         if (c.id === categoryId) {
           const subs = Array.isArray(c.subcategories) ? c.subcategories : [];
-          if (!subs.includes(trimmed)) {
-            return {
+          if (!subs.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
+            const updatedCat = {
               ...c,
               subcategories: [...subs, trimmed],
             };
+            if (auth.currentUser?.uid) {
+              saveCategoryToFirestore(auth.currentUser.uid, updatedCat).catch(console.error);
+            }
+            return updatedCat;
           }
         }
         return c;
@@ -728,18 +928,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const removeSubcategory = (categoryId: string, subcategoryName: string) => {
+  const renameSubcategory = (
+    categoryId: string,
+    oldSubcat: string,
+    newSubcat: string
+  ): { updatedContractsCount: number } => {
+    const trimmedOld = oldSubcat.trim();
+    const trimmedNew = newSubcat.trim();
+    if (!trimmedNew || trimmedOld.toLowerCase() === trimmedNew.toLowerCase()) {
+      return { updatedContractsCount: 0 };
+    }
+
+    // 1. Update subcategories in the category
     setCategories((prev) =>
       prev.map((c) => {
         if (c.id === categoryId && Array.isArray(c.subcategories)) {
-          return {
+          const updatedCat = {
             ...c,
-            subcategories: c.subcategories.filter((s) => s !== subcategoryName),
+            subcategories: c.subcategories.map((s) =>
+              s.toLowerCase() === trimmedOld.toLowerCase() ? trimmedNew : s
+            ),
           };
+          if (auth.currentUser?.uid) {
+            saveCategoryToFirestore(auth.currentUser.uid, updatedCat).catch(console.error);
+          }
+          return updatedCat;
         }
         return c;
       })
     );
+
+    // 2. Cascade rename to all contracts in this category
+    let updatedContractsCount = 0;
+    const currentUid = auth.currentUser?.uid;
+    setContracts((prev) =>
+      prev.map((contract) => {
+        if (
+          contract.categoryId === categoryId &&
+          (contract.subcategory || '').toLowerCase() === trimmedOld.toLowerCase()
+        ) {
+          updatedContractsCount++;
+          const updated: Contract = {
+            ...contract,
+            subcategory: trimmedNew,
+            updatedAt: new Date().toISOString(),
+          };
+          if (currentUid) {
+            saveContractToFirestore(currentUid, updated).catch((err) => {
+              console.error('Failed to update contract subcategory in Firestore:', err);
+            });
+          }
+          return updated;
+        }
+        return contract;
+      })
+    );
+
+    return { updatedContractsCount };
+  };
+
+  const removeSubcategory = (
+    categoryId: string,
+    subcategoryName: string,
+    reassignToSubcategory?: string
+  ): { updatedContractsCount: number } => {
+    const trimmed = subcategoryName.trim();
+    const targetCat = categories.find((c) => c.id === categoryId);
+    const remainingSubs = (targetCat?.subcategories || []).filter(
+      (s) => s.toLowerCase() !== trimmed.toLowerCase()
+    );
+    const fallbackSubcat =
+      reassignToSubcategory?.trim() || remainingSubs[0] || 'General';
+
+    // 1. Remove subcategory from category
+    setCategories((prev) =>
+      prev.map((c) => {
+        if (c.id === categoryId && Array.isArray(c.subcategories)) {
+          const updatedCat = {
+            ...c,
+            subcategories: c.subcategories.filter(
+              (s) => s.toLowerCase() !== trimmed.toLowerCase()
+            ),
+          };
+          if (auth.currentUser?.uid) {
+            saveCategoryToFirestore(auth.currentUser.uid, updatedCat).catch(console.error);
+          }
+          return updatedCat;
+        }
+        return c;
+      })
+    );
+
+    // 2. Cascade fallback subcategory to contracts
+    let updatedContractsCount = 0;
+    const currentUid = auth.currentUser?.uid;
+    setContracts((prev) =>
+      prev.map((contract) => {
+        if (
+          contract.categoryId === categoryId &&
+          (contract.subcategory || '').toLowerCase() === trimmed.toLowerCase()
+        ) {
+          updatedContractsCount++;
+          const updated: Contract = {
+            ...contract,
+            subcategory: fallbackSubcat,
+            updatedAt: new Date().toISOString(),
+          };
+          if (currentUid) {
+            saveContractToFirestore(currentUid, updated).catch((err) => {
+              console.error('Failed to update contract subcategory in Firestore:', err);
+            });
+          }
+          return updated;
+        }
+        return contract;
+      })
+    );
+
+    return { updatedContractsCount };
   };
 
   // Demo contracts management (both local and Firestore)
@@ -790,12 +1096,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, count };
   };
 
-  // User settings
+  // User settings & profile
   const updateUserSettings = (newSettings: Partial<UserSettings>) => {
     setUser((prev) => {
-      const updated = {
+      const updated: User = {
         ...prev,
-        settings: { ...prev.settings, ...newSettings },
+        settings: {
+          ...prev.settings,
+          ...newSettings,
+          channels: {
+            ...prev.settings?.channels,
+            ...(newSettings.channels || {}),
+          },
+        },
       };
       saveUser(updated);
       return updated;
@@ -805,6 +1118,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateFirestoreUserSettings(auth.currentUser.uid, newSettings).catch((err) => {
         console.error('Failed to update Firestore user settings:', err);
       });
+    }
+  };
+
+  const updateUserProfile = async (updates: {
+    name?: string;
+    email?: string;
+    settings?: Partial<UserSettings>;
+  }): Promise<void> => {
+    let finalUser: User = user;
+    setUser((prev) => {
+      const updatedUser: User = {
+        ...prev,
+        name: updates.name !== undefined ? updates.name.trim() : prev.name,
+        email: updates.email !== undefined ? updates.email.trim() : prev.email,
+        settings: updates.settings !== undefined ? {
+          ...prev.settings,
+          ...updates.settings,
+          channels: {
+            ...prev.settings?.channels,
+            ...(updates.settings.channels || {}),
+          },
+        } : prev.settings,
+      };
+      finalUser = updatedUser;
+      saveUser(updatedUser);
+      return updatedUser;
+    });
+
+    if (auth.currentUser) {
+      try {
+        await updateFirestoreUserProfile(auth.currentUser.uid, updates);
+      } catch (err) {
+        console.error('Failed to update Firestore user profile:', err);
+      }
     }
   };
 
@@ -964,11 +1311,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addChecklistItem,
         addCategory,
         updateCategory,
+        deleteCategory,
         addSubcategory,
+        renameSubcategory,
         removeSubcategory,
         handleRemoveDemoData,
         handleRestoreDemoData,
         updateUserSettings,
+        updateUserProfile,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         snoozeNotification,

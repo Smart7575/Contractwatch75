@@ -304,7 +304,7 @@ export const ReportsPage: React.FC = () => {
         if (days < 0 || days > 30) return false;
       }
 
-      // Coverage scope filter ('all' / allebei, 'family', 'individual')
+      // Coverage scope filter ('all', 'family', 'individual')
       if (coverageFilter === 'family' && c.coverageType !== 'family') return false;
       if (coverageFilter === 'individual' && c.coverageType !== 'individual') return false;
 
@@ -359,6 +359,33 @@ export const ReportsPage: React.FC = () => {
     return days < 0;
   }).length;
 
+  // Cancellation Radar Horizons Breakdown
+  const overdueContractsList = totalActiveContracts.filter((c) => {
+    const days = getDaysRemaining(c.cancellationDeadline);
+    return days < 0;
+  });
+  const next30ContractsList = totalActiveContracts.filter((c) => {
+    const days = getDaysRemaining(c.cancellationDeadline);
+    return days >= 0 && days <= 30;
+  });
+  const days31to90ContractsList = totalActiveContracts.filter((c) => {
+    const days = getDaysRemaining(c.cancellationDeadline);
+    return days > 30 && days <= 90;
+  });
+  const laterContractsList = totalActiveContracts.filter((c) => {
+    const days = getDaysRemaining(c.cancellationDeadline);
+    return days > 90;
+  });
+
+  const overdueSpendTotal = overdueContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+  const next30SpendTotal = next30ContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+  const days31to90SpendTotal = days31to90ContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+  const laterSpendTotal = laterContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+
+  const priorityActionContracts = [...overdueContractsList, ...next30ContractsList].sort((a, b) =>
+    (a.cancellationDeadline || '').localeCompare(b.cancellationDeadline || '')
+  );
+
   // Group filtered contracts by category
   const categoriesWithContracts = useMemo(() => {
     return categories
@@ -367,8 +394,8 @@ export const ReportsPage: React.FC = () => {
 
         // Sort contracts inside category by subcategory (A-Z) and then contract name (A-Z)
         const sortedCatContracts = [...catContracts].sort((a, b) => {
-          const subA = (a.subcategory || 'Algemeen').trim();
-          const subB = (b.subcategory || 'Algemeen').trim();
+          const subA = (a.subcategory || 'General').trim();
+          const subB = (b.subcategory || 'General').trim();
           const subComp = subA.localeCompare(subB, undefined, { sensitivity: 'base' });
           if (subComp !== 0) return subComp;
           return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
@@ -377,7 +404,7 @@ export const ReportsPage: React.FC = () => {
         // Group into subcategory blocks, preserving alphabetical subcategory order
         const subcategoryMap = new Map<string, Contract[]>();
         sortedCatContracts.forEach((contract) => {
-          const sub = (contract.subcategory || 'Algemeen').trim();
+          const sub = (contract.subcategory || 'General').trim();
           if (!subcategoryMap.has(sub)) {
             subcategoryMap.set(sub, []);
           }
@@ -498,7 +525,7 @@ export const ReportsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Executive KPI Totaaloverzicht */}
+        {/* Executive KPI Summary */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
           <div className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
             <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
@@ -626,6 +653,235 @@ export const ReportsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Cancellation Radar Overview & Notice Horizons */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-7 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Cancellation Radar Overview</span>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  {totalActiveContracts.length} Active
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Notice deadlines and auto-renewal horizons · Matches the executive PDF report radar
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {statusFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+              >
+                Reset Radar Filter
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 4 Radar Horizon Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+          {/* Horizon 1: Overdue */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === 'expired' ? 'all' : 'expired')}
+            className={`p-3.5 rounded-xl border text-left transition cursor-pointer relative overflow-hidden ${
+              statusFilter === 'expired'
+                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-500 ring-2 ring-rose-500/20'
+                : 'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/80 dark:border-rose-900/40 hover:border-rose-300 dark:hover:border-rose-800'
+            }`}
+          >
+            <div className="flex items-center justify-between text-rose-800 dark:text-rose-300">
+              <span className="text-[11px] font-bold uppercase tracking-wider">1. Overdue Notice</span>
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-1">
+              {overdueContractsList.length}
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+              {formatCurrency(overdueSpendTotal, user.settings.currency)} / yr
+            </div>
+            <div className="text-[10px] text-rose-700 dark:text-rose-300 font-medium mt-1">
+              {overdueContractsList.length > 0 ? 'Auto-renewal risk · Action required' : 'Zero overdue deadlines'}
+            </div>
+          </button>
+
+          {/* Horizon 2: Next 30 Days */}
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === 'urgent' ? 'all' : 'urgent')}
+            className={`p-3.5 rounded-xl border text-left transition cursor-pointer relative overflow-hidden ${
+              statusFilter === 'urgent'
+                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/20'
+                : 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-900/40 hover:border-amber-300 dark:hover:border-amber-800'
+            }`}
+          >
+            <div className="flex items-center justify-between text-amber-800 dark:text-amber-300">
+              <span className="text-[11px] font-bold uppercase tracking-wider">2. Next 30 Days</span>
+              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-1">
+              {next30ContractsList.length}
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+              {formatCurrency(next30SpendTotal, user.settings.currency)} / yr
+            </div>
+            <div className="text-[10px] text-amber-700 dark:text-amber-300 font-medium mt-1">
+              {next30ContractsList.length > 0 ? 'Immediate notice action window' : 'Zero upcoming deadlines'}
+            </div>
+          </button>
+
+          {/* Horizon 3: 31–90 Days */}
+          <div className="p-3.5 rounded-xl border bg-yellow-50/30 dark:bg-yellow-950/20 border-yellow-200/70 dark:border-yellow-900/40 text-left">
+            <div className="flex items-center justify-between text-yellow-800 dark:text-yellow-300">
+              <span className="text-[11px] font-bold uppercase tracking-wider">3. 31–90 Days</span>
+              <Calendar className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+            </div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-yellow-700 dark:text-yellow-400 mt-1">
+              {days31to90ContractsList.length}
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+              {formatCurrency(days31to90SpendTotal, user.settings.currency)} / yr
+            </div>
+            <div className="text-[10px] text-yellow-700 dark:text-yellow-300 font-medium mt-1">
+              Upcoming renewal decisions
+            </div>
+          </div>
+
+          {/* Horizon 4: Safe >90 Days */}
+          <div className="p-3.5 rounded-xl border bg-emerald-50/30 dark:bg-emerald-950/20 border-emerald-200/70 dark:border-emerald-900/40 text-left">
+            <div className="flex items-center justify-between text-emerald-800 dark:text-emerald-300">
+              <span className="text-[11px] font-bold uppercase tracking-wider">4. Safe Horizon (&gt;90d)</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+              {laterContractsList.length}
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+              {formatCurrency(laterSpendTotal, user.settings.currency)} / yr
+            </div>
+            <div className="text-[10px] text-emerald-700 dark:text-emerald-300 font-medium mt-1">
+              Monitored & secure commitments
+            </div>
+          </div>
+        </div>
+
+        {/* Priority Action Watchlist */}
+        {priorityActionContracts.length > 0 ? (
+          <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                <span>Radar Action Queue: Contracts Requiring Notice Attention ({priorityActionContracts.length})</span>
+              </div>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                Sorted by nearest notice deadline
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              {priorityActionContracts.map((contract) => {
+                const days = getDaysRemaining(contract.cancellationDeadline);
+                const isOverdue = days < 0;
+
+                return (
+                  <div
+                    key={contract.id}
+                    className="p-3.5 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div
+                        className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${
+                          isOverdue ? 'bg-rose-500 ring-2 ring-rose-200' : 'bg-amber-500 ring-2 ring-amber-200'
+                        }`}
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                            {contract.name}
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              isOverdue
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                            }`}
+                          >
+                            {isOverdue ? `${Math.abs(days)}d Overdue` : `${days}d left — Action Required`}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                          <span>{contract.supplier}</span>
+                          <span>·</span>
+                          <span>{contract.subcategory || 'General'}</span>
+                          <span>·</span>
+                          <span>Notice: {contract.noticePeriod.value} {contract.noticePeriod.unit}</span>
+                          <span>·</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            Deadline: {formatDate(contract.cancellationDeadline)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                      <div className="text-right">
+                        <div className="text-xs font-mono font-bold text-slate-900 dark:text-white">
+                          {formatCurrency(contract.annualCost, user.settings.currency)}/yr
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          ~{formatCurrency(contract.monthlyCost, user.settings.currency)}/mo
+                        </div>
+                      </div>
+
+                      {contract.credentials?.url && (
+                        <a
+                          href={contract.credentials.url.startsWith('http') ? contract.credentials.url : `https://${contract.credentials.url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-xs font-semibold transition"
+                          title="Open login portal directly"
+                        >
+                          <span>Login</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedContractId(contract.id)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition cursor-pointer"
+                      >
+                        Dossier
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/40 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>
+                <strong>All active commitments are secure.</strong> Zero contracts currently overdue or in the 30-day notice window.
+              </span>
+            </div>
+            <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+              Radar status: Clear horizon
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Filter and View Controls Bar (hidden during print) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 print:hidden">
         {/* Search Input */}
@@ -722,7 +978,7 @@ export const ReportsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Categories Report Feed (Gesorteerd per categorie) */}
+      {/* Categories Report Feed (Sorted per category) */}
       <div className="space-y-6">
         {categoriesWithContracts.length === 0 ? (
           <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -949,7 +1205,7 @@ export const ReportsPage: React.FC = () => {
                                 </div>
                               </div>
 
-                              {/* Document Links Section (Alle bijbehorende links naar documenten) */}
+                              {/* Document Links Section (All associated document links) */}
                               <div className="pt-1">
                                 <div className="flex items-center justify-between text-xs mb-1.5">
                                   <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -1232,7 +1488,7 @@ export const ReportsPage: React.FC = () => {
         )}
       </div>
 
-      {/* iPad / Tablet Native PDF Viewer & Share Modal */}
+      {/* iPhone & iPad / Tablet Native PDF Viewer & Share Modal */}
       {isIpadViewerOpen && pdfPreviewData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
           <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[94vh]">
@@ -1244,10 +1500,10 @@ export const ReportsPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    PDF Report Dossier (Landscape)
+                    PDF Report Dossier (Landscape — iPhone, iPad & Desktop)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    View the landscape report directly or save to Files
+                    Identical landscape report layout across all iOS, iPadOS and desktop browsers
                   </p>
                 </div>
               </div>
@@ -1285,12 +1541,12 @@ export const ReportsPage: React.FC = () => {
 
             {/* Modal Body: Embedded PDF View & Guidance */}
             <div className="p-4 sm:p-5 flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto">
-              {/* Instructions banner for iPad users */}
+              {/* Instructions banner for iPhone and iPad users */}
               <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 text-xs text-indigo-900 dark:text-indigo-200 flex items-start gap-2.5">
                 <Share2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-semibold">iPad Instructions:</strong>{' '}
-                  Tap <span className="font-semibold text-indigo-700 dark:text-indigo-300">"Save to Files / Share"</span> above to save the report directly into your Files app (iCloud Drive / On My iPad), share via AirDrop, or print via AirPrint.
+                  <strong className="font-semibold">iPhone & iPad Instructions:</strong>{' '}
+                  This report is created with the exact same vector landscape format and layout. The first page presents the full Radar Overview contract roster, followed by the detailed portfolio subreport. Tap <span className="font-semibold text-indigo-700 dark:text-indigo-300">"Save to Files / Share"</span> above to save directly into Files (iCloud Drive / On My Device), share via AirDrop, or print via AirPrint. You can also use the direct download link below.
                 </div>
               </div>
 

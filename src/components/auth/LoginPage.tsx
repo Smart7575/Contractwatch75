@@ -41,28 +41,28 @@ export const LoginPage: React.FC = () => {
     try {
       if (mode === 'forgot') {
         if (!email.includes('@')) {
-          setErrorMessage('Vul een geldig e-mailadres in.');
+          setErrorMessage('Please enter a valid email address.');
           setIsSubmitting(false);
           return;
         }
         const res = await resetPassword(email);
         if (res.success) {
-          setSuccessMessage(`Er is een wachtwoord-herstellink gestuurd naar ${email}. Controleer je inbox.`);
+          setSuccessMessage(`A password reset link has been sent to ${email}. Please check your inbox.`);
         } else {
-          setErrorMessage(res.error || 'Kon herstellink niet versturen.');
+          setErrorMessage(res.error || 'Could not send reset link.');
         }
         setIsSubmitting(false);
         return;
       }
 
       if (!email.includes('@')) {
-        setErrorMessage('Vul een geldig e-mailadres in.');
+        setErrorMessage('Please enter a valid email address.');
         setIsSubmitting(false);
         return;
       }
 
       if (password.length < 6) {
-        setErrorMessage('Het wachtwoord moet minimaal 6 tekens lang zijn.');
+        setErrorMessage('Password must be at least 6 characters long.');
         setIsSubmitting(false);
         return;
       }
@@ -70,16 +70,16 @@ export const LoginPage: React.FC = () => {
       if (mode === 'signup') {
         const res = await registerWithEmail(email, password, name || email.split('@')[0]);
         if (!res.success) {
-          setErrorMessage(res.error || 'Registratie mislukt.');
+          setErrorMessage(res.error || 'Registration failed.');
         }
       } else {
         const res = await loginWithEmail(email, password);
         if (!res.success) {
-          setErrorMessage(res.error || 'Inloggen mislukt. Controleer je gegevens.');
+          setErrorMessage(res.error || 'Sign in failed. Please verify your credentials.');
         }
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Er is een onverwachte fout opgetreden.');
+      setErrorMessage(err.message || 'An unexpected error occurred.');
     } finally {
       setIsSubmitting(false);
     }
@@ -92,10 +92,10 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await loginWithGoogle();
       if (!res.success) {
-        setErrorMessage(res.error || 'Google inloggen is niet gelukt.');
+        setErrorMessage(res.error || 'Google sign-in was not successful.');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Er is een fout opgetreden bij Google inloggen.');
+      setErrorMessage(err.message || 'An error occurred during Google sign-in.');
     } finally {
       setIsSubmitting(false);
     }
@@ -113,7 +113,7 @@ export const LoginPage: React.FC = () => {
             ContractWatch
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-            Slim contract- en opzegtermijnbeheer. Voorkom ongewenste verlengingen en beheer je vaste lasten.
+            Smart contract & notice period tracking. Prevent unwanted renewals and manage your recurring spend.
           </p>
         </div>
 
@@ -135,7 +135,7 @@ export const LoginPage: React.FC = () => {
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                Inloggen
+                Sign In
               </button>
               <button
                 type="button"
@@ -150,7 +150,7 @@ export const LoginPage: React.FC = () => {
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                Nieuw Account
+                Create Account
               </button>
             </div>
           )}
@@ -182,7 +182,7 @@ export const LoginPage: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>Inloggen met Google</span>
+                <span>Sign in with Google</span>
               </button>
 
               <div className="relative my-5">
@@ -191,7 +191,7 @@ export const LoginPage: React.FC = () => {
                 </div>
                 <div className="relative flex justify-center text-xs">
                   <span className="bg-white dark:bg-slate-900 px-3 text-slate-400 font-medium">
-                    of met e-mailadres
+                    or with email address
                   </span>
                 </div>
               </div>
@@ -203,10 +203,10 @@ export const LoginPage: React.FC = () => {
             {mode === 'forgot' && (
               <div className="mb-4">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">
-                  Wachtwoord herstellen
+                  Reset Password
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Vul het e-mailadres van je account in. We sturen direct een herstellink.
+                  Enter your account email address. We will send a reset link immediately.
                 </p>
               </div>
             )}
@@ -214,7 +214,7 @@ export const LoginPage: React.FC = () => {
             {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Volledige Naam
+                  Full Name
                 </label>
                 <div className="relative">
                   <UserIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -223,7 +223,7 @@ export const LoginPage: React.FC = () => {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="bijv. Jan de Vries"
+                    placeholder="e.g. Alex Morgan"
                     className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
@@ -232,7 +232,7 @@ export const LoginPage: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                E-mailadres
+                Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -241,7 +241,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="naam@voorbeeld.nl"
+                  placeholder="name@example.com"
                   className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
@@ -251,7 +251,7 @@ export const LoginPage: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Wachtwoord
+                    Password
                   </label>
                   {mode === 'signin' && (
                     <button
@@ -263,7 +263,7 @@ export const LoginPage: React.FC = () => {
                       }}
                       className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                     >
-                      Wachtwoord vergeten?
+                      Forgot password?
                     </button>
                   )}
                 </div>
@@ -306,20 +306,20 @@ export const LoginPage: React.FC = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Even geduld...</span>
+                  <span>Please wait...</span>
                 </>
               ) : mode === 'signin' ? (
                 <>
-                  <span>Inloggen</span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               ) : mode === 'signup' ? (
                 <>
-                  <span>Account Aanmaken</span>
+                  <span>Create Account</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               ) : (
-                <span>Herstellink Verzenden</span>
+                <span>Send Reset Link</span>
               )}
             </button>
 
@@ -333,7 +333,7 @@ export const LoginPage: React.FC = () => {
                 }}
                 className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 pt-2 cursor-pointer"
               >
-                ← Terug naar inloggen
+                ← Back to sign in
               </button>
             )}
           </form>
@@ -344,28 +344,28 @@ export const LoginPage: React.FC = () => {
           <div className="p-3 rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/50">
             <Clock className="w-4 h-4 text-indigo-500 mx-auto mb-1.5" />
             <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
-              Opzegtermijn Radar
+              Notice Radar
             </div>
             <div className="text-[10px] text-slate-500 dark:text-slate-400">
-              Automatische notificaties
+              Automated notifications
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/50">
             <Layers className="w-4 h-4 text-purple-500 mx-auto mb-1.5" />
             <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
-              Gezin & Individueel
+              Family & Individual
             </div>
             <div className="text-[10px] text-slate-500 dark:text-slate-400">
-              Duidelijke scope-indeling
+              Clear scope breakdown
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-white/60 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/50">
             <FileSpreadsheet className="w-4 h-4 text-emerald-500 mx-auto mb-1.5" />
             <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
-              PDF & CSV Rapportage
+              PDF & CSV Reports
             </div>
             <div className="text-[10px] text-slate-500 dark:text-slate-400">
-              Eenvoudig exporteren
+              One-click exports
             </div>
           </div>
         </div>

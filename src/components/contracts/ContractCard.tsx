@@ -92,9 +92,9 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
             {contract.credentials && (contract.credentials.url || contract.credentials.username || contract.credentials.password) && (
               <>
                 <span aria-hidden="true">·</span>
-                <span title="Inloggegevens beschikbaar" className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded font-medium border border-amber-200/60 dark:border-amber-800/60">
+                <span title="Login credentials available" className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded font-medium border border-amber-200/60 dark:border-amber-800/60">
                   <Key className="w-2.5 h-2.5 text-amber-500" />
-                  <span>Inlog</span>
+                  <span>Login</span>
                 </span>
               </>
             )}
@@ -102,7 +102,7 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
               <>
                 <span aria-hidden="true">·</span>
                 <span
-                  title={`Dekking: ${contract.coverageType === 'family' ? 'Family (Gezin)' : 'Individual (Individueel)'}`}
+                  title={`Coverage: ${contract.coverageType === 'family' ? 'Family' : 'Individual'}`}
                   className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
                     contract.coverageType === 'family'
                       ? 'text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 border border-purple-200/60 dark:border-purple-800/60'

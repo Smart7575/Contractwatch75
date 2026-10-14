@@ -20,7 +20,7 @@ export function generatePrintableHTML(
       const catContracts = contracts
         .filter((c) => c.categoryId === cat.id)
         .sort((a, b) => {
-          const subComp = (a.subcategory || 'Algemeen').localeCompare(b.subcategory || 'Algemeen', undefined, { sensitivity: 'base' });
+          const subComp = (a.subcategory || 'General').localeCompare(b.subcategory || 'General', undefined, { sensitivity: 'base' });
           if (subComp !== 0) return subComp;
           return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
         });
@@ -56,6 +56,19 @@ export function generatePrintableHTML(
               : days === 0
               ? 'Due today'
               : `${days} days left`;
+
+          const creds = c.credentials;
+          const credsHtml =
+            creds && (creds.url || creds.username || creds.password)
+              ? `
+                <div class="creds-line" style="margin-top: 8px; padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px;">
+                  <strong style="color: #4f46e5;">🔑 Account Login:</strong>
+                  ${creds.url ? `<span>Portal: <a href="${creds.url.startsWith('http') ? creds.url : 'https://' + creds.url}" target="_blank" style="color: #1d4ed8; text-decoration: underline;">${creds.url}</a></span>` : ''}
+                  ${creds.username ? `<span style="margin-left: 10px;">Username: <strong>${creds.username}</strong></span>` : ''}
+                  ${creds.password ? `<span style="margin-left: 10px;">Password: <strong style="font-family: monospace; color: #0f172a;">${creds.password}</strong></span>` : ''}
+                </div>
+              `
+              : '';
 
           return `
             <div class="contract-card ${urgencyClass}">
@@ -101,6 +114,8 @@ export function generatePrintableHTML(
                   ${c.contact.url ? `<span>🌐 <a href="${c.contact.url}">${c.contact.url}</a></span>` : ''}
                 </div>
               ` : ''}
+
+              ${credsHtml}
 
               <div class="contract-docs">
                 <div class="docs-heading">Attached Document Links (${c.documentLinks?.length || 0}):</div>

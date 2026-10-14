@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ContractCard } from '../contracts/ContractCard';
 import { TableView } from './TableView';
@@ -17,12 +17,20 @@ import {
   SlidersHorizontal,
   X,
   ShieldAlert,
+  FileDown,
+  Loader2,
+  Share2,
+  ExternalLink,
+  Tablet,
+  CheckCircle2,
 } from 'lucide-react';
+import { exportPDFReport } from '../../lib/pdfReportGenerator';
 
 export const CancellationRadar: React.FC = () => {
   const {
     contracts,
     categories,
+    user,
     filters,
     setFilters,
     resetFilters,
@@ -32,6 +40,86 @@ export const CancellationRadar: React.FC = () => {
     handleRestoreDemoData,
     handleRemoveDemoData,
   } = useApp();
+
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [pdfPreviewData, setPdfPreviewData] = useState<{
+    blob: Blob;
+    blobUrl: string;
+    dataUri: string;
+    filename: string;
+  } | null>(null);
+  const [isIpadViewerOpen, setIsIpadViewerOpen] = useState(false);
+
+  // Direct PDF Export from Radar Overview
+  const handleExportPDF = async () => {
+    setIsGeneratingPDF(true);
+    setStatusMessage('Generating PDF dossier...');
+    try {
+      const activeOrFiltered = filteredContracts.length > 0 ? filteredContracts : contracts;
+      const result = await exportPDFReport(activeOrFiltered, categories, user);
+      
+      setPdfPreviewData({
+        blob: result.blob,
+        blobUrl: result.blobUrl,
+        dataUri: result.dataUri,
+        filename: result.filename,
+      });
+
+      if (result.shared) {
+        setStatusMessage('PDF saved / shared via iPad Share Sheet!');
+      } else if (result.isIpad) {
+        setIsIpadViewerOpen(true);
+        setStatusMessage('PDF ready! View or save to Files.');
+      } else {
+        setStatusMessage('PDF downloaded successfully!');
+      }
+    } catch (err: any) {
+      console.error('PDF error:', err);
+      setStatusMessage('Error generating PDF.');
+    } finally {
+      setIsGeneratingPDF(false);
+      setTimeout(() => setStatusMessage(null), 4500);
+    }
+  };
+
+  const handleShareOnIpad = async () => {
+    try {
+      let currentBlob = pdfPreviewData?.blob;
+      let filename = pdfPreviewData?.filename;
+
+      if (!currentBlob || !filename) {
+        setIsGeneratingPDF(true);
+        const activeOrFiltered = filteredContracts.length > 0 ? filteredContracts : contracts;
+        const res = await exportPDFReport(activeOrFiltered, categories, user);
+        currentBlob = res.blob;
+        filename = res.filename;
+        setPdfPreviewData({
+          blob: res.blob,
+          blobUrl: res.blobUrl,
+          dataUri: res.dataUri,
+          filename: res.filename,
+        });
+      }
+
+      if (navigator.share && currentBlob) {
+        const file = new File([currentBlob], filename, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+          });
+          setStatusMessage('Saved / shared via iOS!');
+          return;
+        }
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        console.warn('Share error:', e);
+      }
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   const hasDemo = contracts.some((c) => c.isDemo || c.id.startsWith('demo_'));
 
@@ -246,9 +334,9 @@ export const CancellationRadar: React.FC = () => {
             className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-medium focus:outline-hidden"
             aria-label="Filter scope"
           >
-            <option value="all">All Scopes (Allebei)</option>
-            <option value="family">Family (Gezin)</option>
-            <option value="individual">Individual (Individueel)</option>
+            <option value="all">All Scopes</option>
+            <option value="family">Family</option>
+            <option value="individual">Individual</option>
           </select>
 
           {/* View Mode Switcher */}
@@ -298,6 +386,28 @@ export const CancellationRadar: React.FC = () => {
               <Columns3 className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Export PDF Button */}
+          <button
+            onClick={handleExportPDF}
+            disabled={isGeneratingPDF}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50"
+            title="Export Radar Overview & Portfolio PDF report (Landscape)"
+          >
+            {isGeneratingPDF ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileDown className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline">Export PDF</span>
+          </button>
+
+          {statusMessage && (
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-medium animate-in fade-in shrink-0">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>{statusMessage}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -361,6 +471,93 @@ export const CancellationRadar: React.FC = () => {
         <TimelineView contracts={filteredContracts} />
       ) : (
         <RadarKanban contracts={filteredContracts} />
+      )}
+
+      {/* iPhone & iPad / Tablet Native PDF Viewer & Share Modal */}
+      {isIpadViewerOpen && pdfPreviewData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[94vh]">
+            {/* Modal Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                  <Tablet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    PDF Report Dossier (Landscape — iPhone, iPad & Desktop)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Radar Overview contract roster as first page · Identical landscape layout across all devices
+                  </p>
+                </div>
+              </div>
+
+              {/* Action buttons on header */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleShareOnIpad}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                  title="Open iOS share sheet (Save to Files / AirDrop / Print)"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Save to Files / Share</span>
+                </button>
+
+                <a
+                  href={pdfPreviewData.blobUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
+                  title="Open in a separate Safari window"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open in Safari</span>
+                </a>
+
+                <button
+                  onClick={() => setIsIpadViewerOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Embedded PDF View & Guidance */}
+            <div className="p-4 sm:p-5 flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto">
+              <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 text-xs text-indigo-900 dark:text-indigo-200 flex items-start gap-2.5">
+                <Share2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="font-semibold">iPhone & iPad Instructions:</strong>{' '}
+                  This report is created with the exact same vector landscape format and layout. The first page presents the full Radar Overview contract roster, followed by the detailed portfolio subreport. Tap <span className="font-semibold text-indigo-700 dark:text-indigo-300">"Save to Files / Share"</span> above to save directly into Files (iCloud Drive / On My Device), share via AirDrop, or print via AirPrint.
+                </div>
+              </div>
+
+              {/* Embedded PDF iframe */}
+              <div className="flex-1 w-full min-h-[460px] sm:min-h-[540px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 shadow-inner">
+                <iframe
+                  src={pdfPreviewData.blobUrl}
+                  title="ContractWatch Landscape PDF Report Preview"
+                  className="w-full h-full border-0"
+                />
+              </div>
+
+              {/* Direct fallback download link */}
+              <div className="flex items-center justify-between pt-2 text-xs text-slate-500">
+                <span>Filename: <code className="font-mono text-indigo-600 dark:text-indigo-400">{pdfPreviewData.filename}</code></span>
+                <a
+                  href={pdfPreviewData.blobUrl}
+                  download={pdfPreviewData.filename}
+                  className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>Direct Download Link</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

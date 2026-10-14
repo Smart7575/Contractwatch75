@@ -5,6 +5,7 @@ import { LayoutDashboard, FileSpreadsheet, Bell, Settings, Plus } from 'lucide-r
 export const MobileNav: React.FC = () => {
   const {
     unreadCount,
+    user,
     setIsAddModalOpen,
     setIsNotificationDrawerOpen,
     setFilters,
@@ -61,7 +62,7 @@ export const MobileNav: React.FC = () => {
         aria-label={`Notifications (${unreadCount} unread)`}
       >
         <Bell className="w-5 h-5" />
-        {unreadCount > 0 && (
+        {user.settings.channels?.inApp !== false && unreadCount > 0 && (
           <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
         )}
         <span className="text-[10px] mt-0.5">Alerts</span>

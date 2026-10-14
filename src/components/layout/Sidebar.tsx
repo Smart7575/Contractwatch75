@@ -25,6 +25,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/dateUtils';
+import { getCategoryIconComponent } from '../../lib/categoryIcons';
 
 const iconMap: Record<string, React.ElementType> = {
   Zap,
@@ -397,7 +398,7 @@ export const Sidebar: React.FC = () => {
               </button>
 
               {sortedCategories.map(({ category, totalSpend }) => {
-                const Icon = iconMap[category.icon] || Layers;
+                const Icon = getCategoryIconComponent(category.icon);
                 return (
                   <button
                     key={category.id}

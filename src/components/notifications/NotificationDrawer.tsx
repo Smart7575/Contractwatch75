@@ -63,7 +63,17 @@ export const NotificationDrawer: React.FC = () => {
 
         {/* Notifications List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {notifications.length === 0 ? (
+          {user.settings.channels?.inApp === false ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center text-slate-400">
+              <BellOff className="w-10 h-10 mb-2 text-slate-400 opacity-60" />
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                In-app meldingen uitgeschakeld
+              </p>
+              <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                Het in-app notificatiepaneel is uitgeschakeld in de instellingen. Schakel dit in om live alerts en badges te zien.
+              </p>
+            </div>
+          ) : notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center text-slate-400">
               <CheckCircle2 className="w-10 h-10 mb-2 text-emerald-500 opacity-60" />
               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">

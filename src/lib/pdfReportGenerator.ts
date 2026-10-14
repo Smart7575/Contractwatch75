@@ -52,10 +52,10 @@ export function createPortfolioPDFDoc(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184);
-      doc.text('ContractWatch — Portfolio & Category Dossier', margin, 9);
-      const subPagePrintDate = new Date().toLocaleDateString('nl-NL', {
+      doc.text('ContractWatch — Radar Overview & Portfolio Detail Dossier', margin, 9);
+      const subPagePrintDate = new Date().toLocaleDateString('en-US', {
         day: '2-digit',
-        month: '2-digit',
+        month: 'short',
         year: 'numeric',
       });
       doc.text(
@@ -70,147 +70,397 @@ export function createPortfolioPDFDoc(
   };
 
   // ==========================================
-  // 1. MAIN REPORT HEADER
-  // ==========================================
-  doc.setFillColor(79, 70, 229); // Indigo 600
-  doc.rect(margin, y, contentWidth, 20, 'F');
-
-  // Title on left
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(255, 255, 255);
-  doc.text('Contract Portfolio & Documents Report', margin + 6, y + 8.5);
-
-  // Print date on right of title block
-  const printDateStr = new Date().toLocaleDateString('nl-NL', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(224, 231, 255);
-  doc.text(
-    `Print date: ${printDateStr}`,
-    pageWidth - margin - 6,
-    y + 8.5,
-    { align: 'right' }
-  );
-
-  // Subtitle / User info
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(224, 231, 255);
-  doc.text(
-    `Complete category-by-category overview with notice deadlines, supplier contacts, and attached document archives · Prepared for ${user.name || 'Account Holder'}`,
-    margin + 6,
-    y + 15
-  );
-
-  y += 24;
-
-  // ==========================================
-  // 2. EXECUTIVE KPI OVERVIEW (4 Cards)
-  // Matching Reports Overview web UI
+  // PART 1: RADAR OVERVIEW (PAGE 1)
+  // Master Cancellation Notice Horizons & Contract Overview
   // ==========================================
   const activeContracts = contracts.filter((c) => c.status === 'active');
   const totalAnnualSpend = activeContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const totalMonthlySpend = activeContracts.reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
-  const urgentCount = activeContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
-    return days >= 0 && days <= 30;
-  }).length;
-  const overdueCount = activeContracts.filter((c) => {
+
+  // 1. Radar Overview Title Banner
+  doc.setFillColor(79, 70, 229); // Indigo 600
+  doc.rect(margin, y, contentWidth, 15, 'F');
+
+  // Title on left
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(255, 255, 255);
+  doc.text('RADAR OVERVIEW — CANCELLATION NOTICE HORIZONS & CONTRACT ROSTER', margin + 6, y + 6.2);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(224, 231, 255);
+  doc.text(
+    `Master contract overview with notice horizons & action pipeline · Prepared for ${user.name || 'Account Holder'}`,
+    margin + 6,
+    y + 11.2
+  );
+
+  // Print date and spend summary on right
+  const printDateStr = new Date().toLocaleDateString('en-US', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text(
+    `Print date: ${printDateStr}`,
+    pageWidth - margin - 6,
+    y + 6.2,
+    { align: 'right' }
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(224, 231, 255);
+  doc.text(
+    `${activeContracts.length} active commitments · ${formatCurrency(totalAnnualSpend, user.settings.currency)}/yr total spend`,
+    pageWidth - margin - 6,
+    y + 11.2,
+    { align: 'right' }
+  );
+
+  y += 18;
+
+  // 2. Radar Notice Horizons (4 Compact Status Cards)
+  const overdueContractsList = activeContracts.filter((c) => {
     const days = getDaysRemaining(c.cancellationDeadline);
     return days < 0;
-  }).length;
+  });
+  const next30ContractsList = activeContracts.filter((c) => {
+    const days = getDaysRemaining(c.cancellationDeadline);
+    return days >= 0 && days <= 30;
+  });
+  const days31to90ContractsList = activeContracts.filter((c) => {
+    const days = getDaysRemaining(c.cancellationDeadline);
+    return days > 30 && days <= 90;
+  });
+  const laterContractsList = activeContracts.filter((c) => {
+    const days = getDaysRemaining(c.cancellationDeadline);
+    return days > 90;
+  });
 
-  const cardGap = 3;
-  const cardW = (contentWidth - cardGap * 3) / 4;
-  const cardH = 18;
+  const overdueSpendTotal = overdueContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+  const next30SpendTotal = next30ContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+  const days31to90SpendTotal = days31to90ContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+  const laterSpendTotal = laterContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
-  // Card 1: Total Annual Spend
-  let cardX = margin;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(cardX, y, cardW, cardH, 2, 2, 'FD');
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('TOTAL ANNUAL SPEND', cardX + 4, y + 5);
+  const radarCardGap = 3;
+  const radarCardW = (contentWidth - radarCardGap * 3) / 4;
+  const radarCardH = 13;
+
+  // Horizon Card 1: Overdue Notice (<0d)
+  let rCardX = margin;
+  doc.setFillColor(overdueContractsList.length > 0 ? 255 : 248, overdueContractsList.length > 0 ? 241 : 250, overdueContractsList.length > 0 ? 242 : 252);
+  doc.setDrawColor(overdueContractsList.length > 0 ? 254 : 226, overdueContractsList.length > 0 ? 205 : 232, overdueContractsList.length > 0 ? 211 : 240);
+  doc.roundedRect(rCardX, y, radarCardW, radarCardH, 1.5, 1.5, 'FD');
+  doc.setFillColor(225, 29, 72); // Rose 600
+  doc.rect(rCardX, y, 2, radarCardH, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text(formatCurrency(totalAnnualSpend, user.settings.currency), cardX + 4, y + 11);
+  doc.setFontSize(6.8);
+  doc.setTextColor(159, 18, 57); // Rose 800
+  doc.text('1. OVERDUE NOTICE (<0D)', rCardX + 4.5, y + 3.8);
+  doc.setFontSize(10);
+  doc.setTextColor(225, 29, 72);
+  doc.text(String(overdueContractsList.length), rCardX + 4.5, y + 8.2);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  doc.text(`~ ${formatCurrency(totalMonthlySpend, user.settings.currency)} / mo`, cardX + 4, y + 15.2);
-
-  // Card 2: Total Contracts
-  cardX += cardW + cardGap;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(cardX, y, cardW, cardH, 2, 2, 'FD');
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.3);
   doc.setTextColor(100, 116, 139);
-  doc.text('TOTAL CONTRACTS', cardX + 4, y + 5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text(String(contracts.length), cardX + 4, y + 11);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  doc.text(`${activeContracts.length} active · ${contracts.length - activeContracts.length} inactive`, cardX + 4, y + 15.2);
+  doc.text(
+    `${formatCurrency(overdueSpendTotal, user.settings.currency)}/yr · ${overdueContractsList.length > 0 ? 'Action required' : 'Zero overdue'}`,
+    rCardX + 4.5,
+    y + 11.5
+  );
 
-  // Card 3: Notice Window (≤30d) - Amber tint matching web UI
-  cardX += cardW + cardGap;
-  doc.setFillColor(254, 243, 199); // Amber 100
-  doc.setDrawColor(251, 191, 36);  // Amber 400
-  doc.roundedRect(cardX, y, cardW, cardH, 2, 2, 'FD');
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  // Horizon Card 2: Next 30 Days (0-30d)
+  rCardX += radarCardW + radarCardGap;
+  doc.setFillColor(next30ContractsList.length > 0 ? 254 : 248, next30ContractsList.length > 0 ? 243 : 250, next30ContractsList.length > 0 ? 199 : 252);
+  doc.setDrawColor(next30ContractsList.length > 0 ? 251 : 226, next30ContractsList.length > 0 ? 191 : 232, next30ContractsList.length > 0 ? 36 : 240);
+  doc.roundedRect(rCardX, y, radarCardW, radarCardH, 1.5, 1.5, 'FD');
+  doc.setFillColor(217, 119, 6); // Amber 600
+  doc.rect(rCardX, y, 2, radarCardH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
   doc.setTextColor(146, 64, 14); // Amber 800
-  doc.text('NOTICE WINDOW (≤30D)', cardX + 4, y + 5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(217, 119, 6); // Amber 600
-  doc.text(String(urgentCount), cardX + 4, y + 11);
+  doc.text('2. NEXT 30 DAYS (0–30D)', rCardX + 4.5, y + 3.8);
+  doc.setFontSize(10);
+  doc.setTextColor(217, 119, 6);
+  doc.text(String(next30ContractsList.length), rCardX + 4.5, y + 8.2);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(180, 83, 9); // Amber 700
-  doc.text(urgentCount > 0 ? 'Requires renewal action' : 'Zero upcoming deadlines', cardX + 4, y + 15.2);
+  doc.setFontSize(6.3);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    `${formatCurrency(next30SpendTotal, user.settings.currency)}/yr · ${next30ContractsList.length > 0 ? 'Critical window' : 'Zero urgent'}`,
+    rCardX + 4.5,
+    y + 11.5
+  );
 
-  // Card 4: Overdue Notice
-  cardX += cardW + cardGap;
-  doc.setFillColor(overdueCount > 0 ? 255 : 248, overdueCount > 0 ? 241 : 250, overdueCount > 0 ? 242 : 252);
-  doc.setDrawColor(overdueCount > 0 ? 254 : 226, overdueCount > 0 ? 205 : 232, overdueCount > 0 ? 211 : 240);
-  doc.roundedRect(cardX, y, cardW, cardH, 2, 2, 'FD');
+  // Horizon Card 3: 31-90 Days (Upcoming)
+  rCardX += radarCardW + radarCardGap;
+  doc.setFillColor(254, 252, 232);
+  doc.setDrawColor(254, 240, 138);
+  doc.roundedRect(rCardX, y, radarCardW, radarCardH, 1.5, 1.5, 'FD');
+  doc.setFillColor(202, 138, 4); // Yellow 600
+  doc.rect(rCardX, y, 2, radarCardH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
+  doc.setTextColor(133, 77, 14); // Yellow 800
+  doc.text('3. UPCOMING (31–90D)', rCardX + 4.5, y + 3.8);
+  doc.setFontSize(10);
+  doc.setTextColor(161, 98, 7);
+  doc.text(String(days31to90ContractsList.length), rCardX + 4.5, y + 8.2);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.3);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    `${formatCurrency(days31to90SpendTotal, user.settings.currency)}/yr · Quarterly review`,
+    rCardX + 4.5,
+    y + 11.5
+  );
+
+  // Horizon Card 4: Safe Horizon (>90d)
+  rCardX += radarCardW + radarCardGap;
+  doc.setFillColor(240, 253, 244);
+  doc.setDrawColor(187, 247, 208);
+  doc.roundedRect(rCardX, y, radarCardW, radarCardH, 1.5, 1.5, 'FD');
+  doc.setFillColor(5, 150, 105); // Emerald 600
+  doc.rect(rCardX, y, 2, radarCardH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
+  doc.setTextColor(6, 95, 70); // Emerald 800
+  doc.text('4. SAFE HORIZON (>90D)', rCardX + 4.5, y + 3.8);
+  doc.setFontSize(10);
+  doc.setTextColor(5, 150, 105);
+  doc.text(String(laterContractsList.length), rCardX + 4.5, y + 8.2);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.3);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    `${formatCurrency(laterSpendTotal, user.settings.currency)}/yr · Monitored safe`,
+    rCardX + 4.5,
+    y + 11.5
+  );
+
+  y += radarCardH + 3.0;
+
+  // ==========================================
+  // 3. RADAR MASTER CONTRACT OVERVIEW (All monitored contracts)
+  // Substantive contract lines of the Radar Overview directly on Page 1
+  // ==========================================
+  const drawRadarTableHeader = () => {
+    doc.setFillColor(241, 245, 249);
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(margin, y, contentWidth, 5.5, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(71, 85, 105);
+    doc.text('RADAR CONTRACT ROSTER: NAME & SUPPLIER', margin + 4, y + 3.8);
+    doc.text('CATEGORY & SCOPE', margin + 63, y + 3.8);
+    doc.text('NOTICE DEADLINE & HORIZON', margin + 112, y + 3.8);
+    doc.text('TERMS & RENEWAL', margin + 162, y + 3.8);
+    doc.text('ANNUAL SPEND', margin + 199, y + 3.8);
+    doc.text('LOGIN PORTAL & CREDENTIALS', margin + 228, y + 3.8);
+    y += 5.5;
+  };
+
+  drawRadarTableHeader();
+
+  const radarSortedContracts = [...contracts].sort((a, b) => {
+    return (a.cancellationDeadline || '').localeCompare(b.cancellationDeadline || '');
+  });
+
+  const rowHeight = 8.4;
+
+  radarSortedContracts.forEach((contract) => {
+    if (y + rowHeight > pageHeight - 14) {
+      doc.addPage();
+      y = 15;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text('ContractWatch — Radar Overview & Contract Roster (Continued)', margin, 9);
+      doc.text(`Print date: ${printDateStr}`, pageWidth - margin, 9, { align: 'right' });
+      doc.setDrawColor(226, 232, 240);
+      doc.line(margin, 11, pageWidth - margin, 11);
+      drawRadarTableHeader();
+    }
+
+    const days = getDaysRemaining(contract.cancellationDeadline);
+    const category = categories.find((c) => c.id === contract.categoryId);
+    const isOverdue = days < 0;
+    const isUrgent = days >= 0 && days <= 30;
+    const isMid = days > 30 && days <= 90;
+
+    // Row container
+    if (isOverdue) {
+      doc.setFillColor(255, 241, 242); // Rose 50
+    } else if (isUrgent) {
+      doc.setFillColor(254, 243, 199); // Amber 50
+    } else {
+      doc.setFillColor(255, 255, 255);
+    }
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(margin, y, contentWidth, rowHeight, 'FD');
+
+    // Urgency left indicator bar
+    if (isOverdue) {
+      doc.setFillColor(225, 29, 72); // Rose 600
+    } else if (isUrgent) {
+      doc.setFillColor(217, 119, 6); // Amber 600
+    } else if (isMid) {
+      doc.setFillColor(202, 138, 4); // Yellow 600
+    } else {
+      doc.setFillColor(5, 150, 105); // Emerald 600
+    }
+    doc.rect(margin, y, 2.5, rowHeight, 'F');
+
+    // Col 1: Contract Name & Supplier (margin + 4.5, width ~56mm)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.3);
+    doc.setTextColor(15, 23, 42);
+    const truncName = contract.name.length > 28 ? contract.name.substring(0, 26) + '...' : contract.name;
+    doc.text(truncName, margin + 4.5, y + 3.6);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.2);
+    doc.setTextColor(100, 116, 139);
+    const supplierStr = contract.contractNumber
+      ? `${contract.supplier} · #${contract.contractNumber}`
+      : contract.supplier;
+    const truncSupplier = supplierStr.length > 32 ? supplierStr.substring(0, 30) + '...' : supplierStr;
+    doc.text(truncSupplier, margin + 4.5, y + 7.0);
+
+    // Col 2: Category & Scope (margin + 63, width ~47mm)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(51, 65, 85);
+    const catName = category?.name || 'General';
+    doc.text(catName, margin + 63, y + 3.6);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.2);
+    doc.setTextColor(100, 116, 139);
+    const subcatScope = `${contract.subcategory || 'General'} · ${
+      contract.coverageType === 'family' ? 'Family' : 'Individual'
+    }`;
+    doc.text(subcatScope, margin + 63, y + 7.0);
+
+    // Col 3: Notice Deadline & Horizon (margin + 112, width ~48mm)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.3);
+    if (isOverdue) {
+      doc.setTextColor(225, 29, 72); // Rose
+    } else if (isUrgent) {
+      doc.setTextColor(217, 119, 6); // Amber
+    } else if (isMid) {
+      doc.setTextColor(161, 98, 7); // Yellow
+    } else {
+      doc.setTextColor(15, 23, 42);
+    }
+    doc.text(formatDate(contract.cancellationDeadline), margin + 112, y + 3.6);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.2);
+    let horizonPill = `${days}d left (Safe)`;
+    if (isOverdue) {
+      horizonPill = `${Math.abs(days)}d OVERDUE`;
+    } else if (isUrgent) {
+      horizonPill = `${days}d left (Action Required)`;
+    } else if (isMid) {
+      horizonPill = `${days}d left (Upcoming)`;
+    }
+    doc.text(horizonPill, margin + 112, y + 7.0);
+
+    // Col 4: Terms & Renewal (margin + 162, width ~35mm)
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(`Notice: ${contract.noticePeriod.value} ${contract.noticePeriod.unit}`, margin + 162, y + 3.6);
+
+    doc.setFontSize(6.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text(contract.autoRenew ? 'Auto-rollover' : 'Manual expiration', margin + 162, y + 7.0);
+
+    // Col 5: Annual Spend (margin + 199, width ~27mm)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.3);
+    doc.setTextColor(15, 23, 42);
+    doc.text(formatCurrency(contract.annualCost, user.settings.currency), margin + 199, y + 3.6);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`~${formatCurrency(contract.monthlyCost, user.settings.currency)}/mo`, margin + 199, y + 7.0);
+
+    // Col 6: Login Portal Link & Credentials (margin + 228, width ~40mm)
+    const creds = contract.credentials;
+    if (creds?.url) {
+      const rawUrl = creds.url.trim();
+      const cleanUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://') ? rawUrl : `https://${rawUrl}`;
+      const displayUrl = rawUrl.length > 22 ? rawUrl.substring(0, 20) + '...' : rawUrl;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.6);
+      doc.setTextColor(29, 78, 216); // Royal Blue
+      doc.textWithLink(displayUrl, margin + 228, y + 3.6, { url: cleanUrl });
+    } else {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(6.2);
+      doc.setTextColor(148, 163, 184);
+      doc.text('—', margin + 228, y + 3.6);
+    }
+
+    if (creds?.username || creds?.password) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.2);
+      doc.setTextColor(71, 85, 105);
+      const userPart = creds.username ? `U: ${creds.username}` : '';
+      const passPart = creds.password ? `P: ${creds.password}` : '';
+      const combo = [userPart, passPart].filter(Boolean).join(' · ');
+      const truncCombo = combo.length > 25 ? combo.substring(0, 23) + '...' : combo;
+      doc.text(truncCombo, margin + 228, y + 7.0);
+    } else if (!creds?.url) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(6.2);
+      doc.setTextColor(148, 163, 184);
+      doc.text('No login recorded', margin + 228, y + 7.0);
+    }
+
+    y += rowHeight;
+  });
+
+  y += 4;
+
+  // ==========================================
+  // PART 2: DETAIL SUBREPORT — CATEGORY & SUBCATEGORY PORTFOLIO DOSSIER
+  // Starts on a fresh page as the comprehensive detailed subreport
+  // ==========================================
+  doc.addPage();
+  y = 14;
+
+  // Detail Subreport Banner
+  doc.setFillColor(79, 70, 229); // Indigo 600
+  doc.rect(margin, y, contentWidth, 14, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(255, 255, 255);
+  doc.text('DETAIL SUBREPORT — CATEGORY & SUBCATEGORY PORTFOLIO DOSSIER', margin + 6, y + 6.5);
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('OVERDUE NOTICE', cardX + 4, y + 5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  if (overdueCount > 0) {
-    doc.setTextColor(225, 29, 72); // Rose 600
-  } else {
-    doc.setTextColor(15, 23, 42); // Slate 900
-  }
-  doc.text(String(overdueCount), cardX + 4, y + 11);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  doc.text(overdueCount > 0 ? 'Auto-renewal risk' : 'Zero overdue deadlines', cardX + 4, y + 15.2);
+  doc.setTextColor(224, 231, 255);
+  doc.text(
+    'Comprehensive contract dossier archive: attached policy files, duration terms, supplier contacts, and account credentials',
+    margin + 6,
+    y + 11.2
+  );
 
-  y += cardH + 4;
+  y += 18;
 
-  // ==========================================
-  // 3. PORTFOLIO SPEND ALLOCATION & COVERAGE SCOPE
-  // Matching Reports Overview spend bar & coverage strip
-  // ==========================================
+  // Portfolio Spend Allocation & Coverage Scope Summary Bar
   const categoriesWithSpend = categories
     .map((cat) => {
       const catSpend = contracts
@@ -306,7 +556,7 @@ export function createPortfolioPDFDoc(
   y += 24;
 
   // ==========================================
-  // 4. CATEGORIES & SUBCATEGORY GROUPS
+  // 5. CATEGORIES & SUBCATEGORY GROUPS
   // Alphabetically sorted by category, then subcategory
   // ==========================================
   const sortedCategories = [...categories]
@@ -317,7 +567,7 @@ export function createPortfolioPDFDoc(
     const catContracts = contracts
       .filter((c) => c.categoryId === cat.id)
       .sort((a, b) => {
-        const subComp = (a.subcategory || 'Algemeen').localeCompare(b.subcategory || 'Algemeen', undefined, { sensitivity: 'base' });
+        const subComp = (a.subcategory || 'General').localeCompare(b.subcategory || 'General', undefined, { sensitivity: 'base' });
         if (subComp !== 0) return subComp;
         return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
       });
@@ -335,7 +585,7 @@ export function createPortfolioPDFDoc(
     // Group contracts by subcategory inside this category
     const subcategoryMap = new Map<string, Contract[]>();
     catContracts.forEach((c) => {
-      const sub = c.subcategory?.trim() || 'Algemeen';
+      const sub = c.subcategory?.trim() || 'General';
       if (!subcategoryMap.has(sub)) {
         subcategoryMap.set(sub, []);
       }
@@ -822,7 +1072,7 @@ export function createPortfolioPDFDoc(
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Contract Portfolio & Documents Report · Pagina ${i} van ${totalPages}`,
+      `Contract Portfolio & Documents Report · Page ${i} of ${totalPages}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -855,7 +1105,7 @@ export async function exportPDFReport(
   const isIpad = isAppleTouchDevice();
   let shared = false;
 
-  // On iPad/iOS devices: trigger native Share Sheet (AirDrop, Save to Files, Print)
+  // On iPad/iOS devices: trigger native Share Sheet (AirDrop, Save to Files, Print) if available
   if (isIpad && typeof navigator !== 'undefined' && navigator.canShare) {
     try {
       const file = new File([blob], filename, { type: 'application/pdf' });
@@ -870,17 +1120,15 @@ export async function exportPDFReport(
       if (shareErr.name === 'AbortError') {
         return { blob, blobUrl, dataUri, filename, shared: false, isIpad };
       }
-      console.warn('Native iPad share not available:', shareErr);
+      console.warn('Native iPad/iPhone share not available:', shareErr);
     }
   }
 
-  // Desktop or non-iPad trigger
-  if (!isIpad) {
-    try {
-      doc.save(filename);
-    } catch (saveErr) {
-      console.warn('doc.save failed:', saveErr);
-    }
+  // Desktop or fallback trigger: directly trigger save
+  try {
+    doc.save(filename);
+  } catch (saveErr) {
+    console.warn('doc.save notice:', saveErr);
   }
 
   return { blob, blobUrl, dataUri, filename, shared, isIpad };

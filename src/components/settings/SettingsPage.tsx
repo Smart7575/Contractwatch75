@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import {
@@ -34,6 +34,10 @@ import {
   Plus,
   Tag,
   LogOut,
+  Pencil,
+  Search,
+  FolderPlus,
+  X,
 } from 'lucide-react';
 import { downloadICS } from '../../lib/icsExport';
 import { exportFile } from '../../lib/fileExportHelper';
@@ -43,20 +47,28 @@ import {
   parseCSVToContracts,
 } from '../../lib/csvHelper';
 import { formatCurrency, getCurrencyLabel } from '../../lib/dateUtils';
-import { Contract } from '../../types';
+import { Contract, Category } from '../../types';
 import { firebaseConfig, checkFirebaseConnection, FirebaseConnectionStatus, auth } from '../../lib/firebase';
 import { fetchUserContractsFromFirestore } from '../../lib/firebaseService';
-import { isDemoContract } from '../../lib/storage';
+import { isDemoContract, DEFAULT_USER } from '../../lib/storage';
+import { CategoryModal } from './CategoryModal';
+import { DeleteCategoryModal } from './DeleteCategoryModal';
+import { getCategoryIconComponent } from '../../lib/categoryIcons';
 
 export const SettingsPage: React.FC = () => {
   const {
     user,
     updateUserSettings,
+    updateUserProfile,
     handleRemoveDemoData,
     handleRestoreDemoData,
     contracts,
     categories,
+    addCategory,
+    updateCategory,
+    deleteCategory,
     addSubcategory,
+    renameSubcategory,
     removeSubcategory,
     deleteAccount,
     importJSON,
@@ -73,7 +85,7 @@ export const SettingsPage: React.FC = () => {
   const { theme, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<
-    'profile' | 'categories' | 'demodata' | 'firebase' | 'reminders' | 'importexport' | 'data' | 'danger'
+    'profile' | 'categories' | 'demodata' | 'reminders' | 'importexport' | 'danger'
   >('profile');
 
   // Categories & subcategories management state
@@ -81,14 +93,88 @@ export const SettingsPage: React.FC = () => {
   const [newSubcatName, setNewSubcatName] = useState<string>('');
   const [subcatSuccess, setSubcatSuccess] = useState<string | null>(null);
 
+  // Category Modal State (Add & Edit)
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
+
+  // Delete Category Modal State
+  const [isDeleteCategoryModalOpen, setIsDeleteCategoryModalOpen] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+
+  // Category search filter
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+
+  // Inline editing subcategory on card
+  const [inlineEditingSubcat, setInlineEditingSubcat] = useState<{
+    catId: string;
+    oldSub: string;
+    newSub: string;
+  } | null>(null);
+
+  // Quick inline add per category
+  const [quickSubcatByCatId, setQuickSubcatByCatId] = useState<Record<string, string>>({});
+
+  const handleOpenAddCategory = () => {
+    setCategoryToEdit(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleOpenEditCategory = (cat: Category) => {
+    setCategoryToEdit(cat);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleOpenDeleteCategory = (cat: Category) => {
+    setCategoryToDelete(cat);
+    setIsDeleteCategoryModalOpen(true);
+  };
+
   const handleAddSubcategory = (catId: string) => {
     const trimmed = newSubcatName.trim();
     if (!trimmed) return;
     addSubcategory(catId, trimmed);
     setNewSubcatName('');
-    const catName = categories.find((c) => c.id === catId)?.name || 'categorie';
+    const catName = categories.find((c) => c.id === catId)?.name || 'category';
     setSubcatSuccess(`Subcategorie "${trimmed}" succesvol toegevoegd aan ${catName}!`);
     setTimeout(() => setSubcatSuccess(null), 3500);
+  };
+
+  const handleQuickAddSubcatToCat = (catId: string) => {
+    const val = (quickSubcatByCatId[catId] || '').trim();
+    if (!val) return;
+    addSubcategory(catId, val);
+    setQuickSubcatByCatId((prev) => ({ ...prev, [catId]: '' }));
+    const catName = categories.find((c) => c.id === catId)?.name || 'category';
+    setSubcatSuccess(`Subcategorie "${val}" toegevoegd aan ${catName}!`);
+    setTimeout(() => setSubcatSuccess(null), 3500);
+  };
+
+  const handleSaveInlineRenameSubcat = () => {
+    if (!inlineEditingSubcat) return;
+    const { catId, oldSub, newSub } = inlineEditingSubcat;
+    const trimmedNew = newSub.trim();
+    if (!trimmedNew || trimmedNew.toLowerCase() === oldSub.toLowerCase()) {
+      setInlineEditingSubcat(null);
+      return;
+    }
+    const res = renameSubcategory(catId, oldSub, trimmedNew);
+    setInlineEditingSubcat(null);
+    const msg =
+      res.updatedContractsCount > 0
+        ? `Subcategorie "${oldSub}" hernoemd naar "${trimmedNew}". ${res.updatedContractsCount} contract(en) direct bijgewerkt!`
+        : `Subcategorie "${oldSub}" hernoemd naar "${trimmedNew}".`;
+    setSubcatSuccess(msg);
+    setTimeout(() => setSubcatSuccess(null), 4000);
+  };
+
+  const handleRemoveSubcatWithCascade = (catId: string, sub: string) => {
+    const res = removeSubcategory(catId, sub);
+    const msg =
+      res.updatedContractsCount > 0
+        ? `Subcategorie "${sub}" verwijderd. ${res.updatedContractsCount} contract(en) overgezet naar standaard subcategorie.`
+        : `Subcategorie "${sub}" verwijderd.`;
+    setSubcatSuccess(msg);
+    setTimeout(() => setSubcatSuccess(null), 4000);
   };
 
   // Demo contracts management state & handlers
@@ -109,13 +195,13 @@ export const SettingsPage: React.FC = () => {
       const res = await handleRemoveDemoData();
       setDemoFeedback({
         type: 'success',
-        message: `Alle demo contracten (${res.count}) zijn succesvol verwijderd uit uw werkruimte.`,
+        message: `All demo contracts (${res.count}) were successfully removed from your workspace.`,
       });
       setTimeout(() => setDemoFeedback(null), 4000);
     } catch (err: any) {
       setDemoFeedback({
         type: 'info',
-        message: err?.message || 'Demo data verwijderen is voltooid.',
+        message: err?.message || 'Demo data removal complete.',
       });
     } finally {
       setIsDemoActionRunning(false);
@@ -129,13 +215,13 @@ export const SettingsPage: React.FC = () => {
       const res = await handleRestoreDemoData();
       setDemoFeedback({
         type: 'success',
-        message: `De realistische voorbeeldcontracten (${res.count}) zijn succesvol teruggezet en beschikbaar in uw radar.`,
+        message: `The sample contracts (${res.count}) have been successfully restored to your workspace.`,
       });
       setTimeout(() => setDemoFeedback(null), 4000);
     } catch (err: any) {
       setDemoFeedback({
         type: 'info',
-        message: err?.message || 'Demo data terugzetten is voltooid.',
+        message: err?.message || 'Demo data restore complete.',
       });
     } finally {
       setIsDemoActionRunning(false);
@@ -161,7 +247,7 @@ export const SettingsPage: React.FC = () => {
         storageBucket: firebaseConfig.storageBucket,
         messagingSenderId: firebaseConfig.messagingSenderId,
         appId: firebaseConfig.appId,
-        message: err?.message || 'Verbindingstest mislukt',
+        message: err?.message || 'Connection test failed',
       });
     } finally {
       setTestingConnection(false);
@@ -190,7 +276,7 @@ export const SettingsPage: React.FC = () => {
       const live = await fetchUserContractsFromFirestore(auth.currentUser.uid);
       setFirestoreContracts(live);
     } catch (err: any) {
-      setFirestoreError(err?.message || 'Kon Firestore contracten niet ophalen');
+      setFirestoreError(err?.message || 'Could not fetch Firestore contracts');
     } finally {
       setCheckingFirestore(false);
     }
@@ -222,18 +308,45 @@ export const SettingsPage: React.FC = () => {
       ? `custom:${customCurrencyText.trim() || 'EUR'}`
       : selectedPreset;
 
-  // Channels
-  const [inApp, setInApp] = useState(user.settings.channels.inApp);
-  const [emailAlerts, setEmailAlerts] = useState(user.settings.channels.email);
-  const [webPush, setWebPush] = useState(user.settings.channels.webPush);
-  const [weeklyDigest, setWeeklyDigest] = useState(
-    user.settings.channels.weeklyDigest
-  );
+  // Channels: Only In-App Bell Drawer
+  const [inApp, setInApp] = useState(user.settings.channels?.inApp ?? true);
 
   // Reminders / Lead Times
   const [leadTimes, setLeadTimes] = useState<number[]>(
     user.settings.defaultReminders || [90, 60, 30, 14, 7, 1]
   );
+
+  // Keep form fields synced if user state updates from auth/Firestore
+  useEffect(() => {
+    setName(user.name);
+    const isCustom =
+      user.settings.currency.startsWith('custom:') ||
+      !['EUR', 'USD', 'GBP', 'CHF'].includes(user.settings.currency);
+    setCurrencyMode(isCustom ? 'custom' : 'preset');
+    setSelectedPreset(isCustom ? 'EUR' : user.settings.currency);
+    setCustomCurrencyText(
+      user.settings.currency.startsWith('custom:')
+        ? user.settings.currency.replace('custom:', '').trim()
+        : isCustom
+        ? user.settings.currency.trim()
+        : 'kr'
+    );
+    setTimezone(user.settings.timezone);
+    setInApp(user.settings.channels?.inApp ?? true);
+    setLeadTimes(user.settings.defaultReminders || [90, 60, 30, 14, 7, 1]);
+  }, [user.name, user.settings]);
+
+  const handleToggleInApp = (nextVal: boolean) => {
+    setInApp(nextVal);
+    updateUserSettings({
+      channels: {
+        inApp: nextVal,
+        email: false,
+        webPush: false,
+        weeklyDigest: false,
+      },
+    });
+  };
 
   // Import / Export state
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
@@ -247,6 +360,7 @@ export const SettingsPage: React.FC = () => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const toggleLeadTime = (days: number) => {
     if (leadTimes.includes(days)) {
@@ -257,21 +371,64 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateUserSettings({
-      currency: effectiveCurrency,
-      timezone,
-      defaultReminders: leadTimes,
-      channels: {
-        inApp,
-        email: emailAlerts,
-        webPush,
-        weeklyDigest,
-      },
-    });
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+    setIsSavingProfile(true);
+    try {
+      await updateUserProfile({
+        name: name.trim() || 'Stefan Martinali',
+        settings: {
+          currency: effectiveCurrency,
+          timezone,
+          defaultReminders: leadTimes,
+          channels: {
+            inApp,
+            email: false,
+            webPush: false,
+            weeklyDigest: false,
+          },
+        },
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to save user profile:', err);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleResetToStefan = async () => {
+    setName('Stefan Martinali');
+    setCurrencyMode('preset');
+    setSelectedPreset('EUR');
+    setTimezone('Europe/Amsterdam');
+    setInApp(true);
+    setLeadTimes([90, 60, 30, 14, 7, 0]);
+    setIsSavingProfile(true);
+    try {
+      await updateUserProfile({
+        name: 'Stefan Martinali',
+        settings: {
+          ...DEFAULT_USER.settings,
+          currency: 'EUR',
+          timezone: 'Europe/Amsterdam',
+          defaultReminders: [90, 60, 30, 14, 7, 0],
+          channels: {
+            inApp: true,
+            email: false,
+            webPush: false,
+            weeklyDigest: false,
+          },
+        },
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to reset user profile:', err);
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   // JSON Export
@@ -403,10 +560,8 @@ export const SettingsPage: React.FC = () => {
     { id: 'profile', label: 'Profile & Regional', icon: User },
     { id: 'categories', label: 'Categories & Subcategories', icon: Layers },
     { id: 'demodata', label: 'Demo Data', icon: Sparkles },
-    { id: 'firebase', label: 'Firebase Database', icon: Database },
     { id: 'reminders', label: 'Signal Intervals', icon: Bell },
     { id: 'importexport', label: 'Import & Export', icon: FileSpreadsheet },
-    { id: 'data', label: 'Calendar Sync (.ics)', icon: Calendar },
     { id: 'danger', label: 'Danger Zone', icon: Trash2 },
   ] as const;
 
@@ -445,23 +600,6 @@ export const SettingsPage: React.FC = () => {
                 Manage profile defaults, notification signal intervals, calendar synchronization, and backup archives.
               </p>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Private & Local</span>
-            </span>
-            {isFirebaseAuthenticated && (
-              <button
-                type="button"
-                onClick={logout}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900/60 transition cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Uitloggen</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -708,89 +846,107 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Notification Channels */}
+            {/* Notification Channels: Only In-App Bell Drawer */}
             <div className="pt-2">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                Notification Delivery Channels
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-                <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      In-App Bell Drawer
+              <div className="mb-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Notification Delivery Channels
+                </label>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Schakel het in-app notificatiepaneel (de bel rechtsboven) in of uit voor opzegtermijn- en verlengingssignalen.
+                </p>
+              </div>
+              <div className="max-w-lg">
+                <div
+                  onClick={() => handleToggleInApp(!inApp)}
+                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer select-none ${
+                    inApp
+                      ? 'border-indigo-600/60 bg-indigo-50/40 dark:bg-indigo-950/30 ring-1 ring-indigo-500/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        inApp
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      <Bell className="w-4 h-4" />
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      Live badge and notification panel
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span>In-App Bell Drawer</span>
+                        {inApp ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                            Ingeschakeld
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500">
+                            Uitgeschakeld
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Live meldingsbadge en notificatiepaneel in de navigatiebalk
+                      </div>
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={inApp}
-                    onChange={(e) => setInApp(e.target.checked)}
-                    className="rounded text-indigo-600 focus:ring-0 w-4 h-4 cursor-pointer"
-                  />
-                </label>
 
-                <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      Email Alert Signals
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Dispatched before deadline
-                    </div>
+                  {/* Accessible toggle switch */}
+                  <div
+                    role="switch"
+                    aria-checked={inApp}
+                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ml-3 shrink-0 ${
+                      inApp ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                        inApp ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={emailAlerts}
-                    onChange={(e) => setEmailAlerts(e.target.checked)}
-                    className="rounded text-indigo-600 focus:ring-0 w-4 h-4 cursor-pointer"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      Weekly Digest
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Every Monday morning summary
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={weeklyDigest}
-                    onChange={(e) => setWeeklyDigest(e.target.checked)}
-                    className="rounded text-indigo-600 focus:ring-0 w-4 h-4 cursor-pointer"
-                  />
-                </label>
-
-                <label className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 cursor-pointer">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      Browser Web Push
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Desktop and lock screen banners
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={webPush}
-                    onChange={(e) => setWebPush(e.target.checked)}
-                    className="rounded text-indigo-600 focus:ring-0 w-4 h-4 cursor-pointer"
-                  />
-                </label>
+                </div>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
-              >
-                Save Profile Changes
-              </button>
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs inline-flex items-center gap-2"
+                >
+                  {isSavingProfile ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Opslaan...</span>
+                    </>
+                  ) : (
+                    <span>Profiel Opslaan</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetToStefan}
+                  disabled={isSavingProfile}
+                  title="Herstel naar Stefan Martinali (Euro, Amsterdam)"
+                  className="px-3 py-2.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-medium transition cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Standaard instellen (Stefan Martinali, EUR)</span>
+                </button>
+              </div>
+
+              {savedSuccess && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  <span>Gegevens succesvol opgeslagen!</span>
+                </div>
+              )}
             </div>
           </form>
         )}
@@ -798,24 +954,34 @@ export const SettingsPage: React.FC = () => {
         {/* Categories & Subcategories Management Tab */}
         {activeTab === 'categories' && (
           <div className="space-y-6 animate-in fade-in">
+            {/* Tab Header with Primary Action: Add Category */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
                   Contract Categorieën & Subcategorieën
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Bekijk en beheer subcategorieën per contracttype. Voor <strong>Insurance</strong> zijn standaard de subcategorieën <strong>House, Car, Boat, Liability, Travel</strong> beschikbaar.
+                  Voeg nieuwe categorieën toe, wijzig namen, iconen of kleuren, of verwijder overbodige categorieën. Wijzigingen in categorieën en subcategorieën werken <strong>direct en automatisch door</strong> naar al uw gekoppelde contracten.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleOpenAddCategory}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nieuwe Categorie Toevoegen</span>
+                </button>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                   <Layers className="w-3.5 h-3.5" />
-                  <span>{categories.length} Categorieën</span>
+                  <span>{categories.length}</span>
                 </span>
               </div>
             </div>
 
+            {/* Success & Cascading Toast Banner */}
             {subcatSuccess && (
               <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 rounded-xl text-xs font-medium animate-in fade-in">
                 <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -823,24 +989,30 @@ export const SettingsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Quick Add Subcategory Card */}
-            <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5">
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2 flex items-center gap-2">
-                <Plus className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span>Nieuwe Subcategorie Toevoegen</span>
-              </h4>
-              <p className="text-xs text-slate-500 mb-3">
-                Kies een categorie en voeg een nieuwe subcategorie toe. Deze is direct beschikbaar bij het toevoegen of bewerken van contracten.
-              </p>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Quick Add Subcategory Card & Search Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Search filter */}
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 absolute left-3 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={categorySearchQuery}
+                  onChange={(e) => setCategorySearchQuery(e.target.value)}
+                  placeholder="Filter op categorie of subcategorie..."
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Quick Add Subcategory across categories */}
+              <div className="md:col-span-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl">
                 <select
                   value={selectedCatId}
                   onChange={(e) => setSelectedCatId(e.target.value)}
-                  className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-medium"
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-medium"
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({c.subcategories.length} subcategorieën)
+                      {c.name} ({c.subcategories.length})
                     </option>
                   ))}
                 </select>
@@ -855,92 +1027,266 @@ export const SettingsPage: React.FC = () => {
                         handleAddSubcategory(selectedCatId);
                       }
                     }}
-                    placeholder="Bijv. Cyber, Solar, Inboedel..."
-                    className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                    placeholder="Snelle subcategorie toevoegen..."
+                    className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                   />
                   <button
                     type="button"
                     onClick={() => handleAddSubcategory(selectedCatId)}
                     disabled={!newSubcatName.trim()}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs transition-colors shrink-0"
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs transition-colors shrink-0"
                   >
-                    Toevoegen
+                    + Toevoegen
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* List of Categories with their subcategories */}
+            {/* List of Categories with full edit, delete, and inline subcategory controls */}
             <div className="space-y-4">
-              {categories.map((cat) => {
-                const countOfContracts = contracts.filter((c) => c.categoryId === cat.id).length;
-                const isInsurance = cat.id === 'insurance';
+              {categories
+                .filter((cat) => {
+                  if (!categorySearchQuery.trim()) return true;
+                  const q = categorySearchQuery.toLowerCase();
+                  const matchName = cat.name.toLowerCase().includes(q);
+                  const matchSub = (cat.subcategories || []).some((s) => s.toLowerCase().includes(q));
+                  return matchName || matchSub;
+                })
+                .map((cat) => {
+                  const catContracts = contracts.filter((c) => c.categoryId === cat.id);
+                  const countOfContracts = catContracts.length;
+                  const totalSpend = catContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
+                  const IconComp = getCategoryIconComponent(cat.icon);
 
-                return (
-                  <div
-                    key={cat.id}
-                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-3.5 h-3.5 rounded-full shrink-0"
-                          style={{ backgroundColor: cat.color }}
-                        />
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                            <span>{cat.name}</span>
-                            {isInsurance && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                                Standaard: House, Car, Boat, Liability, Travel
+                  return (
+                    <div
+                      key={cat.id}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3 transition-colors"
+                    >
+                      {/* Category Header with Title, Stats, and Actions */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-2xs"
+                            style={{ backgroundColor: cat.color }}
+                          >
+                            <IconComp className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                                {cat.name}
+                              </h4>
+                              {cat.isDefault && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                  Standaard
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
+                              <span>
+                                <strong>{countOfContracts}</strong> contract(en)
                               </span>
-                            )}
-                          </h4>
-                          <p className="text-[11px] text-slate-500">
-                            {countOfContracts} actieve/geregistreerde contract(en) in deze categorie
-                          </p>
+                              <span>•</span>
+                              <span>
+                                <strong>{formatCurrency(totalSpend, user.settings.currency)}</strong>/jr
+                              </span>
+                              <span>•</span>
+                              <span>{cat.subcategories.length} subcategorieën</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Category Action Buttons: Edit & Delete */}
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditCategory(cat)}
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                            title={`Categorie "${cat.name}" wijzigen`}
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
+                            <span>Wijzigen</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDeleteCategory(cat)}
+                            className="px-2.5 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                            title={`Categorie "${cat.name}" verwijderen`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Verwijderen</span>
+                          </button>
                         </div>
                       </div>
 
-                      <span className="text-xs text-slate-500 font-mono self-start sm:self-auto">
-                        {cat.subcategories.length} subcategorieën
-                      </span>
-                    </div>
+                      {/* Subcategories Badges List */}
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                          <span>Subcategorieën ({cat.subcategories.length})</span>
+                          <span className="text-[10px] text-slate-400">
+                            Klik op potloodje om direct te hernoemen
+                          </span>
+                        </div>
 
-                    {/* Subcategories Badges */}
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {cat.subcategories.map((sub) => {
-                        const isDefaultInsuranceSub =
-                          isInsurance && ['House', 'Car', 'Boat', 'Liability', 'Travel'].includes(sub);
+                        <div className="flex flex-wrap gap-2">
+                          {cat.subcategories.map((sub) => {
+                            const contractsWithSub = catContracts.filter(
+                              (c) => (c.subcategory || '').toLowerCase() === sub.toLowerCase()
+                            );
+                            const count = contractsWithSub.length;
+                            const isEditingThisSub =
+                              inlineEditingSubcat?.catId === cat.id &&
+                              inlineEditingSubcat?.oldSub === sub;
 
-                        return (
-                          <div
-                            key={sub}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs border font-medium transition-colors ${
-                              isDefaultInsuranceSub
-                                ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-800'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                            }`}
-                          >
-                            <Tag className="w-3 h-3 text-slate-400" />
-                            <span>{sub}</span>
-                            {cat.subcategories.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeSubcategory(cat.id, sub)}
-                                title={`Verwijder ${sub}`}
-                                className="w-4 h-4 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors ml-0.5 cursor-pointer"
+                            if (isEditingThisSub) {
+                              return (
+                                <div
+                                  key={sub}
+                                  className="inline-flex items-center gap-1 p-1 bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-lg shadow-xs animate-in fade-in"
+                                >
+                                  <input
+                                    type="text"
+                                    value={inlineEditingSubcat.newSub}
+                                    onChange={(e) =>
+                                      setInlineEditingSubcat({
+                                        ...inlineEditingSubcat,
+                                        newSub: e.target.value,
+                                      })
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSaveInlineRenameSubcat();
+                                      } else if (e.key === 'Escape') {
+                                        setInlineEditingSubcat(null);
+                                      }
+                                    }}
+                                    autoFocus
+                                    className="px-1.5 py-0.5 text-xs bg-transparent text-slate-900 dark:text-white focus:outline-hidden w-28 font-medium"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveInlineRenameSubcat}
+                                    className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer"
+                                    title="Opslaan & doorvoeren naar contracten"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInlineEditingSubcat(null)}
+                                    className="p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    title="Annuleren"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={sub}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs border font-medium transition-colors bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700"
                               >
-                                &times;
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
+                                <Tag className="w-3 h-3 text-slate-400" />
+                                <span>{sub}</span>
+
+                                {/* Contract count badge */}
+                                {count > 0 && (
+                                  <span
+                                    className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
+                                    title={`${count} contract(en) gebruiken deze subcategorie`}
+                                  >
+                                    {count}
+                                  </span>
+                                )}
+
+                                {/* Rename subcategory inline button */}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setInlineEditingSubcat({
+                                      catId: cat.id,
+                                      oldSub: sub,
+                                      newSub: sub,
+                                    })
+                                  }
+                                  title={`Hernoem "${sub}" (werkt door naar ${count} contract(en))`}
+                                  className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition cursor-pointer ml-0.5"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+
+                                {/* Delete subcategory button */}
+                                {cat.subcategories.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveSubcatWithCascade(cat.id, sub)}
+                                    title={`Verwijder "${sub}"`}
+                                    className="w-4 h-4 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition ml-0.5 cursor-pointer"
+                                  >
+                                    &times;
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Inline Quick Add for this specific category */}
+                        <div className="pt-1.5 flex items-center gap-2 max-w-sm">
+                          <input
+                            type="text"
+                            value={quickSubcatByCatId[cat.id] || ''}
+                            onChange={(e) =>
+                              setQuickSubcatByCatId({
+                                ...quickSubcatByCatId,
+                                [cat.id]: e.target.value,
+                              })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleQuickAddSubcatToCat(cat.id);
+                              }
+                            }}
+                            placeholder={`+ Subcategorie toevoegen aan ${cat.name}...`}
+                            className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAddSubcatToCat(cat.id)}
+                            disabled={!(quickSubcatByCatId[cat.id] || '').trim()}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-600 hover:text-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 rounded-lg text-xs font-semibold cursor-pointer transition shadow-2xs"
+                          >
+                            + Toevoegen
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+
+              {categories.filter((cat) => {
+                if (!categorySearchQuery.trim()) return true;
+                const q = categorySearchQuery.toLowerCase();
+                return (
+                  cat.name.toLowerCase().includes(q) ||
+                  (cat.subcategories || []).some((s) => s.toLowerCase().includes(q))
                 );
-              })}
+              }).length === 0 && (
+                <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Geen categorieën gevonden voor "{categorySearchQuery}"
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Probeer een andere zoekterm of voeg een nieuwe categorie toe met de knop hierboven.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -951,10 +1297,10 @@ export const SettingsPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                  Demo Data & Voorbeeldcontracten
+                  Demo Data & Sample Contracts
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Verwijder de voorbeeldcontracten om direct met een schone lei te beginnen, of herstel ze op elk moment om alle functionaliteiten te testen.
+                  Remove sample contracts to start with a clean slate, or restore them anytime to test features.
                 </p>
               </div>
 
@@ -967,7 +1313,7 @@ export const SettingsPage: React.FC = () => {
                   }`}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>{hasDemo ? `${demoCount} Demo Contracten Actief` : 'Schone Werkruimte (Geen Demo)'}</span>
+                  <span>{hasDemo ? `${demoCount} Demo Contracts Active` : 'Clean Workspace (No Demo)'}</span>
                 </span>
               </div>
             </div>
@@ -983,7 +1329,7 @@ export const SettingsPage: React.FC = () => {
               >
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="font-bold text-sm">Status bijgewerkt</div>
+                  <div className="font-bold text-sm">Status updated</div>
                   <div className="mt-0.5 leading-relaxed">{demoFeedback.message}</div>
                 </div>
               </div>
@@ -993,19 +1339,19 @@ export const SettingsPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40">
                 <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-                  Demo Contracten
+                  Demo Contracts
                 </div>
                 <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-                  {demoCount} <span className="text-xs font-normal text-slate-500">van de {contracts.length} totaal</span>
+                  {demoCount} <span className="text-xs font-normal text-slate-500">of {contracts.length} total</span>
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">
-                  {hasDemo ? 'Zichtbaar in de radar' : 'Niet aanwezig'}
+                  {hasDemo ? 'Visible in radar' : 'None loaded'}
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40">
                 <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-                  Jaarlijkse Demowaarde
+                  Annual Demo Value
                 </div>
                 <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
                   {formatCurrency(
@@ -1014,34 +1360,34 @@ export const SettingsPage: React.FC = () => {
                   )}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">
-                  {hasDemo ? 'Voorbeeld contractkosten' : '€0,00'}
+                  {hasDemo ? 'Sample contracts cost' : formatCurrency(0, user.settings.currency)}
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40">
                 <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-                  Eigen Contracten
+                  Custom Contracts
                 </div>
                 <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">
                   {contracts.length - demoCount}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">
-                  Blijven altijd behouden
+                  Always retained
                 </div>
               </div>
             </div>
 
             {/* Action Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Card 1: Verwijderen */}
+              {/* Card 1: Remove */}
               <div className="p-5 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/30 dark:bg-rose-950/20 flex flex-col justify-between space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-sm">
                     <Trash2 className="w-4 h-4" />
-                    <span>Demo Data Verwijderen</span>
+                    <span>Remove Demo Data</span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Verwijdert met één klik alle {demoCount} voorbeeldcontracten uit uw radar. Uw eigen handmatig toegevoegde contracten blijven 100% onaangetast.
+                    Removes all {demoCount} sample contracts from your radar with one click. Your own custom contracts remain completely untouched.
                   </p>
                 </div>
 
@@ -1055,24 +1401,24 @@ export const SettingsPage: React.FC = () => {
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>
                       {isDemoActionRunning
-                        ? 'Bezig met verwijderen...'
+                        ? 'Removing...'
                         : hasDemo
-                        ? `Verwijder Alle Demo Data (${demoCount})`
-                        : 'Demo Status Schonen'}
+                        ? `Remove All Demo Data (${demoCount})`
+                        : 'Clear Demo State'}
                     </span>
                   </button>
                 </div>
               </div>
 
-              {/* Card 2: Terugzetten */}
+              {/* Card 2: Restore */}
               <div className="p-5 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/30 dark:bg-indigo-950/20 flex flex-col justify-between space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400 font-bold text-sm">
                     <RotateCcw className="w-4 h-4" />
-                    <span>Demo Data Terugzetten</span>
+                    <span>Restore Demo Data</span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Laadt de 12 realistische voorbeeldcontracten (energie, internet, streaming, fitness, verzekeringen) weer in zodat u de Kanban, tijdlijn en meldingen kunt uitproberen.
+                    Restores the 12 realistic sample contracts (energy, internet, streaming, fitness, insurance) so you can explore the radar, timeline, and notifications.
                   </p>
                 </div>
 
@@ -1086,10 +1432,10 @@ export const SettingsPage: React.FC = () => {
                     <RotateCcw className={`w-3.5 h-3.5 ${isDemoActionRunning ? 'animate-spin' : ''}`} />
                     <span>
                       {isDemoActionRunning
-                        ? 'Bezig met herstellen...'
+                        ? 'Restoring...'
                         : hasDemo
-                        ? 'Demo Data Herstellen / Resetten'
-                        : 'Voorbeeldcontracten Terugzetten'}
+                        ? 'Restore / Reset Demo Data'
+                        : 'Restore Sample Contracts'}
                     </span>
                   </button>
                 </div>
@@ -1101,10 +1447,10 @@ export const SettingsPage: React.FC = () => {
               <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                    Momenteel Geladen Demo Contracten ({demoCount})
+                    Currently Loaded Demo Contracts ({demoCount})
                   </h4>
                   <span className="text-[11px] text-slate-400">
-                    Gemarkeerd met het Demo label in de radar
+                    Marked with the Demo tag in the radar
                   </span>
                 </div>
 
@@ -1123,13 +1469,13 @@ export const SettingsPage: React.FC = () => {
                           <span>•</span>
                           <span className="capitalize">{c.categoryId}</span>
                           <span>•</span>
-                          <span>Opzegtermijn: {c.cancellationDeadline}</span>
+                          <span>Notice: {c.cancellationDeadline}</span>
                         </div>
                       </div>
 
                       <div className="text-right shrink-0">
                         <div className="font-bold text-slate-900 dark:text-white">
-                          {formatCurrency(c.annualCost, user.settings.currency)}/jr
+                          {formatCurrency(c.annualCost, user.settings.currency)}/yr
                         </div>
                         <span className="inline-block mt-0.5 px-2 py-0.5 text-[10px] font-medium bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 rounded">
                           Demo
@@ -1145,397 +1491,17 @@ export const SettingsPage: React.FC = () => {
                   <Check className="w-5 h-5 text-emerald-500" />
                 </div>
                 <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  Schone Werkruimte
+                  Clean Workspace
                 </div>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Er zijn momenteel geen demogegevens aanwezig. U werkt uitsluitend met uw eigen contracten. U kunt voorbeelddata op elk moment weer terugzetten met de knop hierboven.
+                  There are currently no sample contracts loaded. You are working solely with your own custom contracts. You can restore demo data anytime using the button above.
                 </p>
               </div>
             )}
           </div>
         )}
 
-        {/* Firebase & Database Tab */}
-        {activeTab === 'firebase' && (
-          <div className="space-y-6 animate-in fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                  Firebase Database & Cloud Koppeling
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Live Firestore database en authenticatie configuratie voor <strong>contractwatch75</strong>.
-                </p>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleTestConnection}
-                  disabled={testingConnection}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-xl text-xs font-semibold shadow-2xs transition cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
-                  <span>{testingConnection ? 'Verbinding testen...' : 'Test Firebase Verbinding'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Connection Status Banner */}
-            {connectionStatus && (
-              <div
-                className={`p-4 rounded-2xl border text-xs flex items-start gap-3 animate-in fade-in ${
-                  connectionStatus.connected
-                    ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
-                    : 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
-                }`}
-              >
-                {connectionStatus.connected ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <div className="font-bold text-sm">
-                    {connectionStatus.connected ? 'Verbinding met Firebase is Actief!' : 'Verbinding Mislukt'}
-                  </div>
-                  <div className="mt-1 leading-relaxed opacity-90">{connectionStatus.message}</div>
-                  {connectionStatus.latencyMs !== undefined && (
-                    <div className="mt-2 text-[11px] font-mono opacity-80 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Ping reactietijd: {connectionStatus.latencyMs} ms</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Config Parameter Grid */}
-            <div className="space-y-3">
-              <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Geverifieerde Firebase Configuratie Parameters
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Project ID */}
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
-                  <div>
-                    <div className="text-[11px] font-medium text-slate-400">projectId</div>
-                    <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                      {firebaseConfig.projectId}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 rounded-md">
-                      Actief
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(firebaseConfig.projectId, 'projectId')}
-                      className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                      title="Kopiëren"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Auth Domain */}
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
-                  <div>
-                    <div className="text-[11px] font-medium text-slate-400">authDomain</div>
-                    <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                      {firebaseConfig.authDomain}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(firebaseConfig.authDomain, 'authDomain')}
-                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                    title="Kopiëren"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* Storage Bucket */}
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
-                  <div>
-                    <div className="text-[11px] font-medium text-slate-400">storageBucket</div>
-                    <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                      {firebaseConfig.storageBucket}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(firebaseConfig.storageBucket, 'storageBucket')}
-                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                    title="Kopiëren"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* Messaging Sender ID */}
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
-                  <div>
-                    <div className="text-[11px] font-medium text-slate-400">messagingSenderId</div>
-                    <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                      {firebaseConfig.messagingSenderId}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(firebaseConfig.messagingSenderId, 'messagingSenderId')}
-                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                    title="Kopiëren"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* App ID */}
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between md:col-span-2">
-                  <div>
-                    <div className="text-[11px] font-medium text-slate-400">appId</div>
-                    <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                      {firebaseConfig.appId}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(firebaseConfig.appId, 'appId')}
-                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                    title="Kopiëren"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* API Key */}
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between md:col-span-2">
-                  <div className="overflow-hidden">
-                    <div className="text-[11px] font-medium text-slate-400">apiKey</div>
-                    <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5 truncate">
-                      {showApiKey ? firebaseConfig.apiKey : `${firebaseConfig.apiKey.slice(0, 8)}••••••••••••••••••••••••••••`}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                      title={showApiKey ? 'Verbergen' : 'Tonen'}
-                    >
-                      {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(firebaseConfig.apiKey, 'apiKey')}
-                      className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                      title="Kopiëren"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {copiedKey && (
-                <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                  {copiedKey} naar klembord gekopieerd!
-                </div>
-              )}
-            </div>
-
-            {/* Firestore Rules & Data Structure Information */}
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  Firestore Beveiligingsregels (firestore.rules v2)
-                </span>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 rounded-md ml-auto">
-                  Uitgerold
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                De database regels zijn geconfigureerd met strikte eigenaarsrechten (RBAC). Documenten worden opgeslagen onder het unieke gebruikers-ID:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
-                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] text-slate-400 font-sans">Profielen:</div>
-                  <span className="text-indigo-600 dark:text-indigo-400">/users/{'{userId}'}</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] text-slate-400 font-sans">Contracten:</div>
-                  <span className="text-indigo-600 dark:text-indigo-400">/users/{'{userId}'}/contracts</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[10px] text-slate-400 font-sans">Categorieën:</div>
-                  <span className="text-indigo-600 dark:text-indigo-400">/users/{'{userId}'}/categories</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Active User Sync Status */}
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Synchronisatie Status
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {isFirebaseAuthenticated
-                      ? `Ingelogd als ${user.email || user.name}. Wijzigingen worden realtime gesynchroniseerd met Firestore.`
-                      : 'Nog niet aangemeld via Firebase Auth. Gegevens worden veilig lokaal bewaard totdat u zich aanmeldt.'}
-                  </div>
-                </div>
-
-                {isFirebaseAuthenticated ? (
-                  <button
-                    type="button"
-                    onClick={() => syncWithFirebase()}
-                    disabled={isSyncingWithFirebase}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-700 dark:text-slate-300 transition cursor-pointer"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingWithFirebase ? 'animate-spin' : ''}`} />
-                    <span>{isSyncingWithFirebase ? 'Synchroniseren...' : 'Nu Synchroniseren'}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsAuthModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-2xs transition cursor-pointer"
-                  >
-                    <User className="w-3.5 h-3.5" />
-                    <span>Aanmelden / Inloggen</span>
-                  </button>
-                )}
-              </div>
-
-              {lastSyncTime && (
-                <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  <span>Laatste Firestore sync: {new Date(lastSyncTime).toLocaleTimeString()}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Live Firestore User Contract Registration Check */}
-            <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                      Firestore Registratiecontrole per Gebruiker
-                    </h4>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Controleer of uw contracten netjes zijn opgeslagen onder het Firestore pad{' '}
-                    <code className="text-indigo-600 dark:text-indigo-400 font-mono text-[11px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">
-                      /users/{auth.currentUser?.uid || '{userId}'}/contracts/
-                    </code>
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleInspectFirestore}
-                  disabled={checkingFirestore}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-2xs transition cursor-pointer self-start sm:self-auto"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${checkingFirestore ? 'animate-spin' : ''}`} />
-                  <span>{checkingFirestore ? 'Controleren...' : 'Controleer Firestore Contracten'}</span>
-                </button>
-              </div>
-
-              {/* Status details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[11px] text-slate-400">Gebruikersauthenticatie:</div>
-                  <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5 flex items-center gap-1.5">
-                    {isFirebaseAuthenticated ? (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Aangemeld ({auth.currentUser?.email || user.email})</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Niet aangemeld (Lokale modus)</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[11px] text-slate-400">Gebruiker UID (Database Sleutel):</div>
-                  <div className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-0.5 truncate">
-                    {auth.currentUser?.uid || 'Nog niet toegewezen'}
-                  </div>
-                </div>
-              </div>
-
-              {firestoreError && (
-                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{firestoreError}</span>
-                </div>
-              )}
-
-              {/* Live Contract List from Firestore */}
-              {firestoreContracts !== null && (
-                <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-700 dark:text-slate-300">
-                      Gevonden in Firestore Database:{' '}
-                      <span className="text-indigo-600 dark:text-indigo-400 font-mono">
-                        {firestoreContracts.length} documenten
-                      </span>
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      Lokaal aanwezig: {contracts.length}
-                    </span>
-                  </div>
-
-                  {firestoreContracts.length > 0 ? (
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-                      {firestoreContracts.map((c) => (
-                        <div key={c.id} className="p-2.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <div className="min-w-0 pr-3">
-                            <div className="font-semibold text-slate-900 dark:text-white truncate">
-                              {c.name}
-                            </div>
-                            <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
-                              <span>ID: {c.id}</span>
-                              <span>•</span>
-                              <span>{c.supplier}</span>
-                              <span>•</span>
-                              <span className="capitalize">{c.status}</span>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <div className="font-bold text-slate-900 dark:text-white">
-                              {formatCurrency(c.annualCost, user.settings.currency)}/jr
-                            </div>
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 justify-end">
-                              <Check className="w-3 h-3" /> In Firestore
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500">
-                      Er staan momenteel 0 contracten geregistreerd onder deze gebruiker in Firestore. Klik op "Nu Synchroniseren" om eventuele lokale contracten direct op te slaan in de cloud.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Signal Intervals Tab */}
         {activeTab === 'reminders' && (
@@ -1729,86 +1695,7 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Calendar Sync & Demo Data Tab */}
-        {activeTab === 'data' && (
-          <div className="space-y-6">
-            {/* Calendar Synchronization */}
-            <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
-              <div>
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Calendar Synchronization (.ics)
-                </h4>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Export all active cancellation deadlines and automated advance notification alarms to Apple Calendar, Google Calendar, or Microsoft Outlook.
-                </p>
-              </div>
 
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => downloadICS(contracts)}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-semibold transition cursor-pointer"
-                >
-                  <Calendar className="w-4 h-4 text-indigo-500" />
-                  <span>Download Calendar Feed (.ics)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Demo Contracts Management */}
-            <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Demo Contracts Management
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Verwijder voorbeeldcontracten of zet ze op elk gewenst moment terug.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('demodata')}
-                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                >
-                  Volledig demo beheer bekijken →
-                </button>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                <div className="text-xs text-slate-600 dark:text-slate-300">
-                  Status:{' '}
-                  <strong>
-                    {hasDemo
-                      ? `${demoCount} demo contracten geladen`
-                      : 'Geen demo contracten momenteel geladen'}
-                  </strong>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onRemoveDemoData}
-                    disabled={!hasDemo || isDemoActionRunning}
-                    className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Demo Verwijderen</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onRestoreDemoData}
-                    disabled={isDemoActionRunning}
-                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
-                  >
-                    <RotateCcw className={`w-3.5 h-3.5 ${isDemoActionRunning ? 'animate-spin' : ''}`} />
-                    <span>Demo Terugzetten</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Danger Zone Tab */}
         {activeTab === 'danger' && (
@@ -1865,6 +1752,28 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Category Modal (Add & Edit) */}
+      <CategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        categoryToEdit={categoryToEdit}
+        onSaved={(msg) => {
+          setSubcatSuccess(msg);
+          setTimeout(() => setSubcatSuccess(null), 4500);
+        }}
+      />
+
+      {/* Delete Category Modal (Safe Deletion with Contract Reassignment) */}
+      <DeleteCategoryModal
+        isOpen={isDeleteCategoryModalOpen}
+        onClose={() => setIsDeleteCategoryModalOpen(false)}
+        categoryToDelete={categoryToDelete}
+        onDeleted={(msg) => {
+          setSubcatSuccess(msg);
+          setTimeout(() => setSubcatSuccess(null), 4500);
+        }}
+      />
     </div>
   );
 };

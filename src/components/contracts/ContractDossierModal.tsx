@@ -254,12 +254,12 @@ ${user.name}`;
                     {contract.coverageType === 'family' ? (
                       <>
                         <Users className="w-3.5 h-3.5" />
-                        <span>Family (Gezin)</span>
+                        <span>Family</span>
                       </>
                     ) : (
                       <>
                         <UserIcon className="w-3.5 h-3.5" />
-                        <span>Individual (Individueel)</span>
+                        <span>Individual</span>
                       </>
                     )}
                   </span>
@@ -519,7 +519,7 @@ ${user.name}`;
                   <div className="flex items-center gap-2">
                     <Key className="w-4 h-4 text-amber-500" />
                     <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                      Inlog- & Toegangsgegevens
+                      Login & Access Credentials
                     </h4>
                   </div>
                   <button
@@ -530,19 +530,19 @@ ${user.name}`;
                     className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <Edit3 className="w-3 h-3" />
-                    <span>Wijzigen</span>
+                    <span>Edit</span>
                   </button>
                 </div>
 
                 {contract.credentials && (contract.credentials.url || contract.credentials.username || contract.credentials.password || contract.credentials.notes) ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    {/* Webadres (URL) */}
+                    {/* Web Address (URL) */}
                     {contract.credentials.url ? (
                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 sm:col-span-2 flex items-center justify-between gap-3">
                         <div className="min-w-0 flex items-center gap-2">
                           <Globe className="w-4 h-4 text-slate-400 shrink-0" />
                           <div className="min-w-0">
-                            <span className="text-[10px] text-slate-400 block font-medium">Inlog Webadres:</span>
+                            <span className="text-[10px] text-slate-400 block font-medium">Login Website URL:</span>
                             <span className="text-xs font-mono text-slate-900 dark:text-white truncate block">
                               {contract.credentials.url}
                             </span>
@@ -553,7 +553,7 @@ ${user.name}`;
                             type="button"
                             onClick={() => copyCredential(contract.credentials!.url!, 'url')}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
-                            title="Kopieer URL"
+                            title="Copy URL"
                           >
                             {copiedCred === 'url' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
@@ -563,20 +563,20 @@ ${user.name}`;
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-semibold text-xs transition"
                           >
-                            <span>Open Portaal</span>
+                            <span>Open Portal</span>
                             <ExternalLink className="w-3 h-3" />
                           </a>
                         </div>
                       </div>
                     ) : null}
 
-                    {/* Gebruikersnaam */}
+                    {/* Username */}
                     {contract.credentials.username ? (
                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
                         <div className="min-w-0 flex items-center gap-2">
                           <UserIcon className="w-4 h-4 text-slate-400 shrink-0" />
                           <div className="min-w-0">
-                            <span className="text-[10px] text-slate-400 block font-medium">Gebruikersnaam / E-mail:</span>
+                            <span className="text-[10px] text-slate-400 block font-medium">Username / Email:</span>
                             <span className="text-xs font-mono font-bold text-slate-900 dark:text-white truncate block">
                               {contract.credentials.username}
                             </span>
@@ -586,20 +586,20 @@ ${user.name}`;
                           type="button"
                           onClick={() => copyCredential(contract.credentials!.username!, 'username')}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer shrink-0"
-                          title="Kopieer gebruikersnaam"
+                          title="Copy username"
                         >
                           {copiedCred === 'username' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                     ) : null}
 
-                    {/* Wachtwoord */}
+                    {/* Password */}
                     {contract.credentials.password ? (
                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
                         <div className="min-w-0 flex items-center gap-2">
                           <Lock className="w-4 h-4 text-slate-400 shrink-0" />
                           <div className="min-w-0">
-                            <span className="text-[10px] text-slate-400 block font-medium">Wachtwoord:</span>
+                            <span className="text-[10px] text-slate-400 block font-medium">Password:</span>
                             <span className="text-xs font-mono font-bold text-slate-900 dark:text-white truncate block">
                               {showDossierPassword ? contract.credentials.password : '••••••••••••'}
                             </span>
@@ -610,7 +610,7 @@ ${user.name}`;
                             type="button"
                             onClick={() => setShowDossierPassword(!showDossierPassword)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
-                            title={showDossierPassword ? 'Wachtwoord verbergen' : 'Wachtwoord tonen'}
+                            title={showDossierPassword ? 'Hide password' : 'Show password'}
                           >
                             {showDossierPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                           </button>
@@ -618,7 +618,7 @@ ${user.name}`;
                             type="button"
                             onClick={() => copyCredential(contract.credentials!.password!, 'password')}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
-                            title="Kopieer wachtwoord"
+                            title="Copy password"
                           >
                             {copiedCred === 'password' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
@@ -626,10 +626,10 @@ ${user.name}`;
                       </div>
                     ) : null}
 
-                    {/* Notities / 2FA */}
+                    {/* Notes / 2FA */}
                     {contract.credentials.notes ? (
                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 sm:col-span-2 text-xs">
-                        <span className="text-[10px] text-slate-400 block font-medium">Inlognotitie / 2FA:</span>
+                        <span className="text-[10px] text-slate-400 block font-medium">Login Notes / 2FA:</span>
                         <p className="text-slate-700 dark:text-slate-300 mt-0.5 leading-relaxed">
                           {contract.credentials.notes}
                         </p>
@@ -638,7 +638,7 @@ ${user.name}`;
                   </div>
                 ) : (
                   <div className="p-3.5 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Nog geen inloggegevens vastgelegd voor dit contract.</span>
+                    <span className="text-slate-400">No login credentials stored for this contract yet.</span>
                     <button
                       onClick={() => {
                         onClose();
@@ -646,7 +646,7 @@ ${user.name}`;
                       }}
                       className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900 transition cursor-pointer"
                     >
-                      + Inloggegevens Toevoegen
+                      + Add Login Credentials
                     </button>
                   </div>
                 )}
@@ -708,7 +708,7 @@ ${user.name}`;
                       className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
                     >
                       <option value="contract">Contract Agreement</option>
-                      <option value="policy">Policy Schedule (Polisblad)</option>
+                      <option value="policy">Policy Schedule</option>
                       <option value="invoice">Invoice / Bill</option>
                       <option value="terms">Terms & Conditions</option>
                       <option value="correspondence">Letter / Correspondence</option>

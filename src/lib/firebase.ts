@@ -73,7 +73,7 @@ export async function checkFirebaseConnection(): Promise<FirebaseConnectionStatu
       messagingSenderId: firebaseConfig.messagingSenderId,
       appId: firebaseConfig.appId,
       latencyMs,
-      message: 'Succesvol verbonden met Firebase Firestore (contractwatch75).',
+      message: 'Successfully connected to Firebase Firestore (contractwatch75).',
     };
   } catch (error: any) {
     const latencyMs = Math.round(performance.now() - startTime);
@@ -95,7 +95,7 @@ export async function checkFirebaseConnection(): Promise<FirebaseConnectionStatu
         messagingSenderId: firebaseConfig.messagingSenderId,
         appId: firebaseConfig.appId,
         latencyMs,
-        message: 'Verbinding met Firebase Firestore server is actief en beveiligd via firestore.rules.',
+        message: 'Connection to Firebase Firestore is active and secured via firestore.rules.',
       };
     }
 
@@ -108,7 +108,7 @@ export async function checkFirebaseConnection(): Promise<FirebaseConnectionStatu
         messagingSenderId: firebaseConfig.messagingSenderId,
         appId: firebaseConfig.appId,
         latencyMs,
-        message: 'Client is offline of kan Firebase niet bereiken.',
+        message: 'Client is offline or unable to reach Firebase.',
       };
     }
 
@@ -120,7 +120,7 @@ export async function checkFirebaseConnection(): Promise<FirebaseConnectionStatu
       messagingSenderId: firebaseConfig.messagingSenderId,
       appId: firebaseConfig.appId,
       latencyMs,
-      message: `Verbinding bevestigd via Firebase project endpoints (${code || 'OK'}).`,
+      message: `Connection confirmed via Firebase project endpoints (${code || 'OK'}).`,
     };
   }
 }
