@@ -110,7 +110,7 @@ export const LoginPage: React.FC = () => {
             CW
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-            ContractWatch
+            ContractWatch75
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
             Smart contract & notice period tracking. Prevent unwanted renewals and manage your recurring spend.

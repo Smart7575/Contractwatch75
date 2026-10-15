@@ -140,7 +140,7 @@ export const Header: React.FC = () => {
             CW
           </div>
           <span className="text-base sm:text-lg font-bold tracking-tight hidden sm:inline">
-            ContractWatch
+            ContractWatch75
           </span>
         </button>
       </div>

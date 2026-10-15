@@ -113,7 +113,7 @@ const AppNavigation: React.FC = () => {
           <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-600/30">
             CW
           </div>
-          <span className="text-xl font-bold tracking-tight">ContractWatch</span>
+          <span className="text-xl font-bold tracking-tight">ContractWatch75</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
