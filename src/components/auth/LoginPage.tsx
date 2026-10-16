@@ -18,6 +18,7 @@ import {
   loginWithEmail,
   registerWithEmail,
   loginWithGoogle,
+  loginWithApple,
   resetPassword,
 } from '../../lib/firebaseService';
 
@@ -101,6 +102,22 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setIsSubmitting(true);
+    try {
+      const res = await loginWithApple();
+      if (!res.success) {
+        setErrorMessage(res.error || 'Apple sign-in was not successful.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'An error occurred during Apple sign-in.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen w-full flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-50 via-indigo-50/20 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-md">
@@ -155,9 +172,9 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
-          {/* Social Google Login Button */}
+          {/* Social Login Buttons (Google & Apple) */}
           {mode !== 'forgot' && (
-            <div className="mb-5">
+            <div className="space-y-2.5 mb-5">
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
@@ -182,7 +199,19 @@ export const LoginPage: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>Sign in with Google</span>
+                <span>{mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAppleSignIn}
+                disabled={isSubmitting}
+                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl bg-black text-white hover:bg-slate-900 dark:bg-white dark:text-black dark:hover:bg-slate-100 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-2xs disabled:opacity-60"
+              >
+                <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.61-.75 1.04-1.8 0.92-2.85-.9.04-2.03.62-2.69 1.39-.58.67-1.09 1.74-.95 2.77 1.02.08 2.08-.53 2.72-1.31z" />
+                </svg>
+                <span>{mode === 'signup' ? 'Sign up with Apple' : 'Sign in with Apple'}</span>
               </button>
 
               <div className="relative my-5">
