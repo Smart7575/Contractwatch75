@@ -38,13 +38,13 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
 
   const handleDelete = () => {
     const catName = categoryToDelete.name;
-    const targetCatName = selectedTargetCategory?.name || 'Overig';
+    const targetCatName = selectedTargetCategory?.name || 'Other';
     const result = deleteCategory(categoryToDelete.id, defaultTargetId);
 
     const msg =
       result.reassignedCount > 0
-        ? `Categorie "${catName}" verwijderd. ${result.reassignedCount} contract(en) overgezet naar "${targetCatName}".`
-        : `Categorie "${catName}" succesvol verwijderd.`;
+        ? `Category "${catName}" deleted. ${result.reassignedCount} contract(s) reassigned to "${targetCatName}".`
+        : `Category "${catName}" deleted successfully.`;
 
     onDeleted?.(msg);
     onClose();
@@ -69,7 +69,7 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                Categorie Verwijderen
+                Delete Category
               </h3>
               <p className="text-[11px] text-slate-500">
                 "{categoryToDelete.name}"
@@ -79,7 +79,7 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
-            aria-label="Sluiten"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -93,11 +93,11 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-semibold">
-                    Let op: {affectedContracts.length} contract(en) gekoppeld
+                    Notice: {affectedContracts.length} contract(s) linked
                   </p>
                   <p className="text-[11px] text-amber-800 dark:text-amber-300">
-                    Er zijn nog actieve of gearchiveerde contracten die deze categorie gebruiken.
-                    Kies een doellocatie om deze contracten veilig naartoe over te zetten.
+                    Active or archived contracts are currently using this category.
+                    Choose a destination category to safely reassign them.
                   </p>
                 </div>
               </div>
@@ -105,7 +105,7 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
               {/* List of Affected Contracts */}
               <div className="space-y-1.5">
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 text-[11px] uppercase tracking-wider">
-                  Getroffen Contracten ({affectedContracts.length})
+                  Affected Contracts ({affectedContracts.length})
                 </label>
                 <div className="max-h-32 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-2">
                   {affectedContracts.map((c) => (
@@ -120,7 +120,7 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
                         <span className="text-slate-400">({c.supplier})</span>
                       </div>
                       <span className="font-mono text-slate-600 dark:text-slate-400 shrink-0">
-                        {formatCurrency(c.annualCost, user.settings.currency)}/jr
+                        {formatCurrency(c.annualCost, user.settings.currency)}/yr
                       </span>
                     </div>
                   ))}
@@ -130,7 +130,7 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
               {/* Reassignment Dropdown */}
               <div className="space-y-1.5 pt-1">
                 <label className="block font-semibold text-slate-700 dark:text-slate-300">
-                  Zet deze contracten over naar categorie:
+                  Reassign these contracts to category:
                 </label>
                 <select
                   value={defaultTargetId}
@@ -139,21 +139,21 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
                 >
                   {remainingCategories.map((rc) => (
                     <option key={rc.id} value={rc.id}>
-                      {rc.name} ({rc.subcategories.length} subcategorieën)
+                      {rc.name} ({rc.subcategories.length} {rc.subcategories.length === 1 ? 'subcategory' : 'subcategories'})
                     </option>
                   ))}
                 </select>
                 <p className="text-[11px] text-slate-500">
-                  De contracten worden automatisch gekoppeld aan subcategorie "
-                  <strong>{selectedTargetCategory?.subcategories[0] || 'Algemeen'}</strong>".
+                  The contracts will automatically be assigned to subcategory "
+                  <strong>{selectedTargetCategory?.subcategories[0] || 'General'}</strong>".
                 </p>
               </div>
             </>
           ) : (
             <div className="py-2 text-slate-600 dark:text-slate-300">
               <p>
-                Weet u zeker dat u de categorie "<strong>{categoryToDelete.name}</strong>" wilt
-                verwijderen? Er zijn momenteel geen contracten aan deze categorie gekoppeld.
+                Are you sure you want to delete category "<strong>{categoryToDelete.name}</strong>"?
+                There are currently no contracts linked to this category.
               </p>
             </div>
           )}
@@ -166,7 +166,7 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700 rounded-xl font-medium cursor-pointer transition text-xs"
           >
-            Annuleren
+            Cancel
           </button>
 
           <button
@@ -177,8 +177,8 @@ export const DeleteCategoryModal: React.FC<DeleteCategoryModalProps> = ({
             <Trash2 className="w-3.5 h-3.5" />
             <span>
               {affectedContracts.length > 0
-                ? `Verwijderen & ${affectedContracts.length} Contract(en) Overzetten`
-                : 'Categorie Verwijderen'}
+                ? `Delete & Reassign ${affectedContracts.length} Contract(s)`
+                : 'Delete Category'}
             </span>
           </button>
         </div>

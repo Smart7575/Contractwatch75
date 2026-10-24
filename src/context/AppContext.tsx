@@ -18,6 +18,7 @@ import {
   getDaysRemaining,
   getTodayString,
   getUrgencyLevel,
+  shiftDateByOneYear,
 } from '../lib/dateUtils';
 import {
   DEFAULT_CATEGORIES,
@@ -101,6 +102,7 @@ interface AppContextType {
   updateContract: (id: string, updates: Partial<Contract>) => void;
   deleteContract: (id: string) => void;
   duplicateContract: (id: string) => void;
+  rollForwardContract: (id: string) => Contract | undefined;
   markContractStatus: (id: string, status: ContractStatus, followedByContractId?: string) => void;
   snoozeContract: (id: string, days: number) => void;
   toggleFavorite: (id: string) => void;
@@ -109,6 +111,7 @@ interface AppContextType {
   addDocumentLink: (contractId: string, link: Omit<DocumentLink, 'id' | 'contractId' | 'addedAt'>) => void;
   removeDocumentLink: (contractId: string, linkId: string) => void;
   addPriceHistory: (contractId: string, entry: Omit<PriceHistoryEntry, 'id'>) => void;
+  removePriceHistory: (contractId: string, entryId: string) => void;
   toggleChecklistItem: (contractId: string, itemId: string) => void;
   addChecklistItem: (contractId: string, text: string) => void;
 
@@ -465,15 +468,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cancellationDeadline: deadline,
       documentLinks: data.documentLinks || [],
       tags: data.tags || [],
-      priceHistory: data.priceHistory || [
-        {
-          id: `ph_${Date.now()}`,
-          date: data.startDate || getTodayString(),
-          annualCost: data.annualCost,
-          monthlyCost: data.monthlyCost,
-          note: 'Initial contract baseline',
-        },
-      ],
+      priceHistory: (
+        data.priceHistory && data.priceHistory.length > 0
+          ? [...data.priceHistory].sort((a, b) => {
+              const timeA = new Date(a.date).getTime();
+              const timeB = new Date(b.date).getTime();
+              if (isNaN(timeA) || isNaN(timeB)) {
+                return (b.date || '').localeCompare(a.date || '');
+              }
+              return timeB - timeA;
+            })
+          : [
+              {
+                id: `ph_${Date.now()}`,
+                date: data.startDate || getTodayString(),
+                annualCost: data.annualCost,
+                monthlyCost: data.monthlyCost,
+                note: 'Initial contract baseline',
+              },
+            ]
+      ),
       checklist: data.checklist || [
         { id: 'cl_1', text: 'Compare market alternatives', done: false },
         { id: 'cl_2', text: 'Request quotation or check retention offer', done: false },
@@ -603,6 +617,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Roll forward contract (+1 year term)
+  const rollForwardContract = (id: string): Contract | undefined => {
+    const source = contracts.find((c) => c.id === id);
+    if (!source) return undefined;
+
+    const currentUid = auth.currentUser?.uid;
+    const newContractId = `cw_rolled_${Date.now()}`;
+
+    // Shift start and end dates by 1 year
+    const sourceStart = source.startDate || getTodayString();
+    const newStartDate = shiftDateByOneYear(sourceStart);
+
+    // If source has an end date, shift it by 1 year; otherwise default to 1 year after the new start date
+    let newEndDate = '';
+    if (source.endDate && !source.isEndDateOpenEnded) {
+      newEndDate = shiftDateByOneYear(source.endDate);
+    } else {
+      newEndDate = shiftDateByOneYear(newStartDate);
+    }
+
+    // Recalculate cancellation deadline based on notice period
+    const newCancellationDeadline = calculateCancellationDeadline(newEndDate, source.noticePeriod);
+
+    // Duplicate all document links preserving exact URLs, titles, types, providers, and notes
+    const clonedDocumentLinks: DocumentLink[] = (source.documentLinks || []).map((doc, idx) => ({
+      ...doc,
+      id: `doc_${Date.now()}_${idx}`,
+      contractId: newContractId,
+      addedAt: new Date().toISOString(),
+    }));
+
+    const rolledForward: Contract = {
+      ...source,
+      id: newContractId,
+      userId: currentUid || source.userId || user.id,
+      name: source.name,
+      contractNumber: source.contractNumber ? `${source.contractNumber}` : undefined,
+      startDate: newStartDate,
+      endDate: newEndDate,
+      isEndDateOpenEnded: false,
+      cancellationDeadline: newCancellationDeadline,
+      isDeadlineOverridden: false,
+      status: 'active',
+      annualCost: source.annualCost,
+      monthlyCost: source.monthlyCost,
+      documentLinks: clonedDocumentLinks,
+      priceHistory: (() => {
+        const historyList = source.priceHistory && source.priceHistory.length > 0
+          ? [...source.priceHistory]
+          : [
+              {
+                id: `ph_${Date.now()}_prev`,
+                date: source.startDate || getTodayString(),
+                annualCost: source.annualCost,
+                monthlyCost: source.monthlyCost,
+                note: 'Previous contract baseline rate',
+              },
+            ];
+        return historyList.sort((a, b) => {
+          const timeA = new Date(a.date).getTime();
+          const timeB = new Date(b.date).getTime();
+          if (isNaN(timeA) || isNaN(timeB)) {
+            return (b.date || '').localeCompare(a.date || '');
+          }
+          return timeB - timeA;
+        });
+      })(),
+      isFavorite: false,
+      snoozedUntil: undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setContracts((prev) => [rolledForward, ...prev]);
+
+    if (currentUid) {
+      saveContractToFirestore(currentUid, rolledForward)
+        .then(() => {
+          setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        })
+        .catch(() => {});
+    }
+
+    // Immediately open for editing so the user can adjust the price or any details
+    setSelectedContractId(null);
+    setEditingContract(rolledForward);
+
+    setUndoToast({
+      id: `undo_rf_${Date.now()}`,
+      message: `Rolled forward "${source.name}" (+1 year). You can adjust the price now.`,
+      onUndo: () => {
+        setContracts((prev) => prev.filter((c) => c.id !== newContractId));
+        if (currentUid) {
+          deleteContractFromFirestore(currentUid, newContractId).catch(() => {});
+        }
+        setUndoToast(null);
+      },
+    });
+
+    return rolledForward;
+  };
+
   // Explicit manual or programmatic sync with Firebase
   const syncWithFirebase = async (): Promise<{ success: boolean; count: number; error?: string }> => {
     if (!auth.currentUser) {
@@ -681,10 +797,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const target = contracts.find((c) => c.id === contractId);
     if (target) {
+      const existing = target.priceHistory ? [...target.priceHistory] : [];
+      if (existing.length === 0 && target.startDate) {
+        existing.push({
+          id: `ph_${Date.now()}_baseline`,
+          date: target.startDate,
+          annualCost: target.annualCost,
+          monthlyCost: target.monthlyCost,
+          note: 'Initial contract baseline rate',
+        });
+      }
+      const updatedHistory = [newEntry, ...existing].sort((a, b) => {
+        const timeA = new Date(a.date).getTime();
+        const timeB = new Date(b.date).getTime();
+        if (isNaN(timeA) || isNaN(timeB)) {
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        return timeB - timeA;
+      });
+
+      const latest = updatedHistory[0];
       updateContract(contractId, {
-        priceHistory: [newEntry, ...(target.priceHistory || [])],
-        annualCost: newEntry.annualCost,
-        monthlyCost: newEntry.monthlyCost,
+        priceHistory: updatedHistory,
+        annualCost: latest.annualCost,
+        monthlyCost: latest.monthlyCost,
+      });
+    }
+  };
+
+  const removePriceHistory = (contractId: string, entryId: string) => {
+    const target = contracts.find((c) => c.id === contractId);
+    if (target) {
+      const remaining = (target.priceHistory || []).filter((p) => p.id !== entryId);
+      updateContract(contractId, {
+        priceHistory: remaining,
       });
     }
   };
@@ -1301,12 +1447,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateContract,
         deleteContract,
         duplicateContract,
+        rollForwardContract,
         markContractStatus,
         snoozeContract,
         toggleFavorite,
         addDocumentLink,
         removeDocumentLink,
         addPriceHistory,
+        removePriceHistory,
         toggleChecklistItem,
         addChecklistItem,
         addCategory,

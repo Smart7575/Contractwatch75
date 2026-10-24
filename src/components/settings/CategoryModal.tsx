@@ -83,7 +83,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
       setCategoryId('');
       setColor('#6366f1');
       setIcon('Layers');
-      setSubcategories(['Algemeen']);
+      setSubcategories(['General']);
     }
   }, [isOpen, categoryToEdit]);
 
@@ -106,7 +106,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
     const trimmed = newSubcatInput.trim();
     if (!trimmed) return;
     if (subcategories.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
-      setError(`Subcategorie "${trimmed}" bestaat al in deze categorie.`);
+      setError(`Subcategory "${trimmed}" already exists in this category.`);
       return;
     }
     setSubcategories((prev) => [...prev, trimmed]);
@@ -135,7 +135,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
         (s, idx) => idx !== index && s.toLowerCase() === newName.toLowerCase()
       )
     ) {
-      setError(`Subcategorie "${newName}" bestaat al.`);
+      setError(`Subcategory "${newName}" already exists.`);
       return;
     }
 
@@ -164,7 +164,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
 
   const handleRemoveSubcat = (index: number) => {
     if (subcategories.length <= 1) {
-      setError('Een categorie moet minimaal 1 subcategorie bevatten.');
+      setError('A category must have at least 1 subcategory.');
       return;
     }
     const removedName = subcategories[index];
@@ -176,12 +176,12 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
   const handleSave = () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError('Vul een categorienaam in.');
+      setError('Please enter a category name.');
       return;
     }
 
     if (subcategories.length === 0) {
-      setError('Voeg ten minste één subcategorie toe.');
+      setError('Please add at least one subcategory.');
       return;
     }
 
@@ -192,7 +192,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
         (!isEditing || c.id !== categoryToEdit?.id)
     );
     if (duplicate) {
-      setError(`Er bestaat al een categorie met de naam "${trimmedName}".`);
+      setError(`A category named "${trimmedName}" already exists.`);
       return;
     }
 
@@ -211,8 +211,8 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
 
       const msg =
         result.updatedContractsCount > 0
-          ? `Categorie "${trimmedName}" opgeslagen! ${result.updatedContractsCount} contract(en) automatisch bijgewerkt.`
-          : `Categorie "${trimmedName}" succesvol opgeslagen!`;
+          ? `Category "${trimmedName}" saved! ${result.updatedContractsCount} contract(s) updated automatically.`
+          : `Category "${trimmedName}" saved successfully!`;
 
       onSaved?.(msg);
     } else {
@@ -224,7 +224,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
         subcategories,
       });
 
-      onSaved?.(`Nieuwe categorie "${created.name}" succesvol aangemaakt!`);
+      onSaved?.(`New category "${created.name}" created successfully!`);
     }
 
     onClose();
@@ -252,19 +252,19 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                {isEditing ? 'Categorie & Subcategorieën Wijzigen' : 'Nieuwe Categorie Toevoegen'}
+                {isEditing ? 'Edit Category & Subcategories' : 'Add New Category'}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 {isEditing
-                  ? 'Wijzigingen werken direct door in gekoppelde contracten'
-                  : 'Beheer contracttypes, iconen, kleuren en subcategorieën'}
+                  ? 'Changes cascade automatically to all linked contracts'
+                  : 'Manage contract categories, icons, colors, and subcategories'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-            aria-label="Sluiten"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -282,7 +282,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           {/* Section 1: Category Name */}
           <div className="space-y-1.5">
             <label className="block font-semibold text-slate-700 dark:text-slate-300">
-              Categorienaam <span className="text-rose-500">*</span>
+              Category Name <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -291,7 +291,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                 setName(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="Bijv. Streaming & Media, Fitness, Zorg, Zakelijk..."
+              placeholder="e.g. Streaming & Media, Fitness, Health, Business..."
               className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
               autoFocus
             />
@@ -300,7 +300,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           {/* Section 2: Color Picker */}
           <div className="space-y-2">
             <label className="block font-semibold text-slate-700 dark:text-slate-300">
-              Themakleur
+              Theme Color
             </label>
             <div className="flex flex-wrap items-center gap-2">
               {COLOR_PRESETS.map((preset) => {
@@ -326,7 +326,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                   className="w-7 h-7 rounded-lg border border-slate-300 dark:border-slate-700 cursor-pointer p-0.5 bg-white dark:bg-slate-800"
-                  title="Aangepaste kleur kiezen"
+                  title="Pick custom color"
                 />
                 <span className="font-mono text-[11px] text-slate-500">{color}</span>
               </div>
@@ -337,10 +337,10 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="block font-semibold text-slate-700 dark:text-slate-300">
-                Icoon
+                Icon
               </label>
               <span className="text-[11px] text-slate-400">
-                Geselecteerd: {CATEGORY_ICON_OPTIONS.find((opt) => opt.id === icon)?.label || icon}
+                Selected: {CATEGORY_ICON_OPTIONS.find((opt) => opt.id === icon)?.label || icon}
               </span>
             </div>
             <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 max-h-32 overflow-y-auto">
@@ -370,10 +370,10 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="block font-semibold text-slate-700 dark:text-slate-300">
-                Subcategorieën ({subcategories.length})
+                Subcategories ({subcategories.length})
               </label>
               <span className="text-[11px] text-slate-500">
-                Klik op het potloodje om een subcategorie te hernoemen
+                Click pencil icon to rename a subcategory
               </span>
             </div>
 
@@ -408,7 +408,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                         type="button"
                         onClick={() => handleSaveRenameSubcat(index)}
                         className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer"
-                        title="Opslaan"
+                        title="Save"
                       >
                         <Check className="w-3.5 h-3.5" />
                       </button>
@@ -416,7 +416,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                         type="button"
                         onClick={() => setEditingSubcatIndex(null)}
                         className="p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
-                        title="Annuleren"
+                        title="Cancel"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -436,7 +436,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                     {count > 0 && (
                       <span
                         className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
-                        title={`${count} contract(en) gebruiken deze subcategorie`}
+                        title={`${count} contract(s) use this subcategory`}
                       >
                         {count}
                       </span>
@@ -447,7 +447,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                       type="button"
                       onClick={() => handleStartRenameSubcat(index)}
                       className="p-0.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer"
-                      title={`Hernoem "${sub}"`}
+                      title={`Rename "${sub}"`}
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
@@ -458,7 +458,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                         type="button"
                         onClick={() => handleRemoveSubcat(index)}
                         className="p-0.5 text-slate-400 hover:text-rose-500 transition cursor-pointer"
-                        title={`Verwijder "${sub}"`}
+                        title={`Delete "${sub}"`}
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -480,7 +480,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                     handleAddSubcat();
                   }
                 }}
-                placeholder="Nieuwe subcategorie toevoegen..."
+                placeholder="Add new subcategory..."
                 className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
               />
               <button
@@ -490,7 +490,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                 className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl font-semibold flex items-center gap-1 cursor-pointer transition shadow-2xs"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Toevoegen</span>
+                <span>Add</span>
               </button>
             </div>
           </div>
@@ -499,20 +499,20 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/80 rounded-xl space-y-1">
             <div className="flex items-center gap-1.5 font-semibold text-indigo-900 dark:text-indigo-200">
               <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Automatische Doorwerking (Cascading)</span>
+              <span>Automatic Cascading Updates</span>
             </div>
             <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
               {isEditing ? (
                 <>
-                  Er zijn momenteel{' '}
-                  <strong>{affectedContracts.length} contract(en)</strong> gekoppeld aan deze
-                  categorie. Als u de naam van de categorie of een subcategorie wijzigt, wordt dit
-                  onmiddellijk doorgevoerd in al uw contractgegevens, overzichten en PDF-rapporten.
+                  There are currently{' '}
+                  <strong>{affectedContracts.length} contract(s)</strong> linked to this category.
+                  Renaming the category or any subcategory will immediately update all contract
+                  records, summaries, and PDF exports.
                 </>
               ) : (
                 <>
-                  Zodra deze categorie is aangemaakt, is deze direct beschikbaar bij het toevoegen
-                  of bewerken van contracten en in alle dashboards en filters.
+                  Once created, this category will be immediately available when adding or editing
+                  contracts, as well as in all dashboards and filters.
                 </>
               )}
             </p>
@@ -526,7 +526,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700 rounded-xl font-medium cursor-pointer transition"
           >
-            Annuleren
+            Cancel
           </button>
 
           <button
@@ -535,7 +535,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
             className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer transition"
           >
             <Check className="w-4 h-4" />
-            <span>{isEditing ? 'Wijzigingen Opslaan' : 'Categorie Aanmaken'}</span>
+            <span>{isEditing ? 'Save Changes' : 'Create Category'}</span>
           </button>
         </div>
       </div>

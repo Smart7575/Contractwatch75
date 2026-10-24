@@ -117,6 +117,7 @@ export interface Category {
 export interface UserSettings {
   theme: 'light' | 'dark';
   currency: string;
+  customCurrencies?: string[];
   timezone: string;
   language: 'en';
   defaultReminders: number[]; // e.g. [90, 60, 30, 7, 0]

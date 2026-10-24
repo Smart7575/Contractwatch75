@@ -10,6 +10,9 @@ import {
   CheckCircle2,
   Loader2,
   Sparkles,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import {
   loginWithEmail,
@@ -34,6 +37,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   if (!isOpen) return null;
 
@@ -146,9 +150,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         {errorMessage && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMessage}</span>
+          <div className="mb-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex flex-col gap-2">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{errorMessage}</span>
+            </div>
+            {(errorMessage.toLowerCase().includes('geautoriseerd') ||
+              errorMessage.toLowerCase().includes('unauthorized-domain')) &&
+              typeof window !== 'undefined' && (
+                <div className="mt-1 pt-2 border-t border-rose-200/60 dark:border-rose-900/40 text-[11px] space-y-1.5">
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    Oplossing (in 1 minuut):
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="px-2 py-0.5 bg-white dark:bg-slate-900 font-mono font-bold rounded border border-rose-200 dark:border-rose-800 text-rose-950 dark:text-rose-200 select-all truncate max-w-xs">
+                      {window.location.hostname}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(window.location.hostname);
+                        setCopiedDomain(true);
+                        setTimeout(() => setCopiedDomain(false), 2000);
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 text-rose-800 dark:text-rose-200 font-semibold cursor-pointer shrink-0"
+                    >
+                      {copiedDomain ? <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedDomain ? 'Gekopieerd' : 'Kopieer'}</span>
+                    </button>
+                  </div>
+                  <div>
+                    <a
+                      href="https://console.firebase.google.com/project/contractwatch75/authentication/settings"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      <span>Open Firebase Settings</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              )}
           </div>
         )}
 

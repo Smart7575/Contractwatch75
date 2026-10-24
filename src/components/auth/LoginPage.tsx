@@ -13,6 +13,9 @@ import {
   Clock,
   Layers,
   FileSpreadsheet,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import {
   loginWithEmail,
@@ -32,6 +35,7 @@ export const LoginPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,9 +317,51 @@ export const LoginPage: React.FC = () => {
 
             {/* Error & Success Alerts */}
             {errorMessage && (
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{errorMessage}</span>
+              <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{errorMessage}</span>
+                </div>
+                {(errorMessage.toLowerCase().includes('geautoriseerd') ||
+                  errorMessage.toLowerCase().includes('unauthorized-domain')) &&
+                  typeof window !== 'undefined' && (
+                    <div className="mt-1 pt-2.5 border-t border-rose-200/60 dark:border-rose-900/40 text-[11px] space-y-2">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        Oplossing (in 1 minuut):
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <code className="px-2 py-1 bg-white dark:bg-slate-900 font-mono font-bold rounded-lg border border-rose-200 dark:border-rose-800 text-rose-950 dark:text-rose-200 select-all text-xs truncate max-w-xs">
+                          {window.location.hostname}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(window.location.hostname);
+                            setCopiedDomain(true);
+                            setTimeout(() => setCopiedDomain(false), 2000);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-100 dark:bg-rose-900/60 hover:bg-rose-200 dark:hover:bg-rose-800 text-rose-800 dark:text-rose-200 text-[11px] font-semibold transition cursor-pointer shrink-0"
+                        >
+                          {copiedDomain ? <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedDomain ? 'Gekopieerd!' : 'Kopieer domein'}</span>
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 leading-normal">
+                        Plak dit domein in Firebase Console &gt; <strong>Authentication</strong> &gt; <strong>Settings</strong> &gt; <strong>Authorized domains</strong>.
+                      </div>
+                      <div>
+                        <a
+                          href="https://console.firebase.google.com/project/contractwatch75/authentication/settings"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          <span>Open Firebase Settings</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
               </div>
             )}
 

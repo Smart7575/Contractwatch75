@@ -117,7 +117,7 @@ const AppNavigation: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
-          <span>Inlogsessie verifiëren...</span>
+          <span>Verifying authentication session...</span>
         </div>
       </div>
     );

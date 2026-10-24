@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Contract, DocumentType, DocumentProvider } from '../../types';
 import {
@@ -24,8 +24,6 @@ import {
   CheckCircle2,
   FileText,
   TrendingUp,
-  ListTodo,
-  History,
   HardDrive,
   FolderLock,
   Plus,
@@ -42,6 +40,7 @@ import {
   Check,
   User as UserIcon,
   Users,
+  RotateCw,
 } from 'lucide-react';
 
 interface ContractDossierModalProps {
@@ -57,19 +56,19 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
     setEditingContract,
     deleteContract,
     duplicateContract,
+    rollForwardContract,
     markContractStatus,
     toggleFavorite,
     addDocumentLink,
     removeDocumentLink,
     addPriceHistory,
-    toggleChecklistItem,
-    addChecklistItem,
+    removePriceHistory,
     categories,
     user,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'documents' | 'costs' | 'letter' | 'checklist' | 'activity'
+    'overview' | 'documents' | 'costs' | 'letter'
   >('overview');
 
   // Password visibility & copied state for credentials
@@ -95,11 +94,22 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   const [priceAnnual, setPriceAnnual] = useState<number | ''>('');
   const [priceNote, setPriceNote] = useState('');
 
-  // New Checklist state
-  const [newChecklistText, setNewChecklistText] = useState('');
 
   // Cancellation letter copied state
   const [copiedLetter, setCopiedLetter] = useState(false);
+
+  // Price history items sorted on effective date with the newer contract / rate first
+  const sortedPriceHistory = useMemo(() => {
+    if (!contract?.priceHistory) return [];
+    return [...contract.priceHistory].sort((a, b) => {
+      const timeA = new Date(a.date).getTime();
+      const timeB = new Date(b.date).getTime();
+      if (isNaN(timeA) || isNaN(timeB)) {
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      return timeB - timeA;
+    });
+  }, [contract?.priceHistory]);
 
   if (!contract) return null;
 
@@ -158,12 +168,6 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
     setIsAddingPrice(false);
   };
 
-  const handleAddChecklist = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newChecklistText.trim()) return;
-    addChecklistItem(contract.id, newChecklistText.trim());
-    setNewChecklistText('');
-  };
 
   // Generate formal cancellation letter content
   const letterBody = `[Your Full Name]
@@ -295,6 +299,17 @@ ${user.name}`;
             </button>
             <button
               onClick={() => {
+                rollForwardContract(contract.id);
+                onClose();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition cursor-pointer shadow-2xs"
+              title="Duplicate and roll forward start & expiration dates by 1 year"
+            >
+              <RotateCw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Roll Forward (+1 Yr)</span>
+            </button>
+            <button
+              onClick={() => {
                 duplicateContract(contract.id);
                 onClose();
               }}
@@ -366,8 +381,6 @@ ${user.name}`;
             { id: 'documents', label: `Documents (${contract.documentLinks?.length || 0})`, icon: HardDrive },
             { id: 'costs', label: 'Costs & History', icon: TrendingUp },
             { id: 'letter', label: 'Cancellation Letter', icon: Printer },
-            { id: 'checklist', label: 'Checklist', icon: ListTodo },
-            { id: 'activity', label: 'Activity Log', icon: History },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -423,6 +436,34 @@ ${user.name}`;
                     {contract.autoRenew ? `Auto-renews: ${contract.renewalPeriod}` : 'Fixed term (no renew)'}
                   </div>
                 </div>
+              </div>
+
+              {/* Roll Forward Next Term Callout Banner */}
+              <div className="p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5">
+                    <RotateCw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                      Roll Contract Forward (+1 Year)
+                    </h5>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      Duplicates this contract with start & expiration dates shifted 1 year forward. All document links will be preserved, and you can immediately adjust the renewal price.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    rollForwardContract(contract.id);
+                    onClose();
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shrink-0 shadow-2xs transition cursor-pointer"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>Roll Forward Now</span>
+                </button>
               </div>
 
               {/* Financial Summary */}
@@ -513,7 +554,7 @@ ${user.name}`;
                 </div>
               </div>
 
-              {/* Inlog- & Toegangsgegevens Card */}
+              {/* Login & Portal Credentials Card */}
               <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -818,7 +859,7 @@ ${user.name}`;
                     Price Changes & History
                   </h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Track price indexation and price increases upon tacit renewal.
+                    Track price indexation and price increases upon tacit renewal, sorted by effective date (newest first).
                   </p>
                 </div>
                 <button
@@ -866,13 +907,13 @@ ${user.name}`;
                     <button
                       type="button"
                       onClick={() => setIsAddingPrice(false)}
-                      className="px-3 py-1.5 text-xs text-slate-500"
+                      className="px-3 py-1.5 text-xs text-slate-500 cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold"
+                      className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold cursor-pointer transition"
                     >
                       Save Rate
                     </button>
@@ -882,29 +923,89 @@ ${user.name}`;
 
               {/* Price Log */}
               <div className="space-y-2">
-                {(contract.priceHistory || []).map((entry, idx) => (
-                  <div
-                    key={entry.id || idx}
-                    className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-900 dark:text-white">
-                        {entry.note}
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        Effective date: {formatDate(entry.date)}
-                      </div>
-                    </div>
-                    <div className="text-right font-mono tabular-nums">
-                      <div className="text-sm font-bold text-slate-900 dark:text-white">
-                        {formatCurrency(entry.annualCost, user.settings.currency)}/yr
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {formatCurrency(entry.monthlyCost, user.settings.currency)}/mo
-                      </div>
-                    </div>
+                {sortedPriceHistory.length === 0 ? (
+                  <div className="p-6 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400">
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      No price adjustments logged yet
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Current rate: {formatCurrency(contract.annualCost, user.settings.currency)}/yr ({formatCurrency(contract.monthlyCost, user.settings.currency)}/mo). Click &quot;Log Price Change&quot; to add a new rate with its effective date.
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  sortedPriceHistory.map((entry, idx) => {
+                    const prevEntry = sortedPriceHistory[idx + 1];
+                    const diff = prevEntry ? entry.annualCost - prevEntry.annualCost : null;
+                    const pctDiff =
+                      prevEntry && prevEntry.annualCost > 0
+                        ? ((entry.annualCost - prevEntry.annualCost) / prevEntry.annualCost) * 100
+                        : null;
+                    const isLatest = idx === 0;
+
+                    return (
+                      <div
+                        key={entry.id || idx}
+                        className={`flex items-center justify-between p-3.5 rounded-xl border transition ${
+                          isLatest
+                            ? 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/20 dark:bg-indigo-950/20 shadow-2xs'
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {entry.note || 'Contract rate'}
+                            </span>
+                            {isLatest && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                Latest Rate
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-mono">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              Effective date: {formatDate(entry.date)}
+                            </span>
+                            {diff !== null && (
+                              <span
+                                className={`font-semibold ${
+                                  diff > 0
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : diff < 0
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-slate-400'
+                                }`}
+                              >
+                                ({diff > 0 ? '+' : ''}
+                                {formatCurrency(diff, user.settings.currency)}
+                                {pctDiff !== null && ` / ${diff > 0 ? '+' : ''}${pctDiff.toFixed(1)}%`})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right font-mono tabular-nums">
+                            <div className="text-sm font-bold text-slate-900 dark:text-white">
+                              {formatCurrency(entry.annualCost, user.settings.currency)}/yr
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              {formatCurrency(entry.monthlyCost, user.settings.currency)}/mo
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePriceHistory(contract.id, entry.id)}
+                            title="Remove price record"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
@@ -956,125 +1057,7 @@ ${user.name}`;
             </div>
           )}
 
-          {/* TAB 5: CHECKLIST & STRATEGY */}
-          {activeTab === 'checklist' && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Contract Switching & Cancellation Checklist
-                </h4>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Follow each milestone to ensure seamless cancellation and no overlap.
-                </p>
-              </div>
 
-              {/* Progress bar */}
-              {(() => {
-                const list = contract.checklist || [];
-                const doneCount = list.filter((i) => i.done).length;
-                const pct = list.length > 0 ? Math.round((doneCount / list.length) * 100) : 0;
-                return (
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-                      <span>Progress ({doneCount}/{list.length} completed)</span>
-                      <span className="font-mono">{pct}%</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                      <div
-                        className="h-full bg-indigo-600 transition-all duration-300"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="space-y-2">
-                {(contract.checklist || []).map((item) => (
-                  <label
-                    key={item.id}
-                    className={`flex items-start gap-3 p-3.5 rounded-xl border transition cursor-pointer ${
-                      item.done
-                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 text-slate-500'
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={item.done}
-                      onChange={() => toggleChecklistItem(contract.id, item.id)}
-                      className="mt-0.5 rounded text-indigo-600 focus:ring-0 w-4 h-4 cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <span className={item.done ? 'line-through' : 'font-medium'}>
-                        {item.text}
-                      </span>
-                      {item.completedAt && (
-                        <div className="text-[11px] text-emerald-600 mt-0.5 font-mono">
-                          Completed on {formatDate(item.completedAt.split('T')[0])}
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                ))}
-              </div>
-
-              {/* Add custom checklist step */}
-              <form onSubmit={handleAddChecklist} className="flex gap-2 pt-2">
-                <input
-                  type="text"
-                  value={newChecklistText}
-                  onChange={(e) => setNewChecklistText(e.target.value)}
-                  placeholder="Add custom task (e.g. Return router by post)..."
-                  className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold cursor-pointer"
-                >
-                  Add Task
-                </button>
-              </form>
-            </div>
-          )}
-
-          {/* TAB 6: ACTIVITY LOG */}
-          {activeTab === 'activity' && (
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Audit Trail & History
-              </h4>
-              <div className="space-y-2">
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-semibold text-slate-900 dark:text-white">
-                      Contract recorded
-                    </span>
-                    <p className="text-slate-400 text-[11px]">
-                      Initial entry logged into ContractWatch
-                    </p>
-                  </div>
-                  <span className="text-slate-400 font-mono text-[11px]">
-                    {formatDate(contract.createdAt.split('T')[0])}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-semibold text-slate-900 dark:text-white">
-                      Last details updated
-                    </span>
-                    <p className="text-slate-400 text-[11px]">
-                      Fields modified or status checked
-                    </p>
-                  </div>
-                  <span className="text-slate-400 font-mono text-[11px]">
-                    {formatDate(contract.updatedAt.split('T')[0])}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import {
@@ -38,6 +38,7 @@ import {
   Search,
   FolderPlus,
   X,
+  Globe,
 } from 'lucide-react';
 import { downloadICS } from '../../lib/icsExport';
 import { exportFile } from '../../lib/fileExportHelper';
@@ -54,6 +55,12 @@ import { isDemoContract, DEFAULT_USER } from '../../lib/storage';
 import { CategoryModal } from './CategoryModal';
 import { DeleteCategoryModal } from './DeleteCategoryModal';
 import { getCategoryIconComponent } from '../../lib/categoryIcons';
+import {
+  getTimezoneOptions,
+  getGroupedTimezoneOptions,
+  getLocalDeviceTimezone,
+  formatTimezoneOffset,
+} from '../../lib/timezones';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -135,7 +142,7 @@ export const SettingsPage: React.FC = () => {
     addSubcategory(catId, trimmed);
     setNewSubcatName('');
     const catName = categories.find((c) => c.id === catId)?.name || 'category';
-    setSubcatSuccess(`Subcategorie "${trimmed}" succesvol toegevoegd aan ${catName}!`);
+    setSubcatSuccess(`Subcategory "${trimmed}" successfully added to ${catName}!`);
     setTimeout(() => setSubcatSuccess(null), 3500);
   };
 
@@ -145,7 +152,7 @@ export const SettingsPage: React.FC = () => {
     addSubcategory(catId, val);
     setQuickSubcatByCatId((prev) => ({ ...prev, [catId]: '' }));
     const catName = categories.find((c) => c.id === catId)?.name || 'category';
-    setSubcatSuccess(`Subcategorie "${val}" toegevoegd aan ${catName}!`);
+    setSubcatSuccess(`Subcategory "${val}" added to ${catName}!`);
     setTimeout(() => setSubcatSuccess(null), 3500);
   };
 
@@ -161,8 +168,8 @@ export const SettingsPage: React.FC = () => {
     setInlineEditingSubcat(null);
     const msg =
       res.updatedContractsCount > 0
-        ? `Subcategorie "${oldSub}" hernoemd naar "${trimmedNew}". ${res.updatedContractsCount} contract(en) direct bijgewerkt!`
-        : `Subcategorie "${oldSub}" hernoemd naar "${trimmedNew}".`;
+        ? `Subcategory "${oldSub}" renamed to "${trimmedNew}". ${res.updatedContractsCount} contract(s) updated immediately!`
+        : `Subcategory "${oldSub}" renamed to "${trimmedNew}".`;
     setSubcatSuccess(msg);
     setTimeout(() => setSubcatSuccess(null), 4000);
   };
@@ -171,8 +178,8 @@ export const SettingsPage: React.FC = () => {
     const res = removeSubcategory(catId, sub);
     const msg =
       res.updatedContractsCount > 0
-        ? `Subcategorie "${sub}" verwijderd. ${res.updatedContractsCount} contract(en) overgezet naar standaard subcategorie.`
-        : `Subcategorie "${sub}" verwijderd.`;
+        ? `Subcategory "${sub}" deleted. ${res.updatedContractsCount} contract(s) reassigned to default subcategory.`
+        : `Subcategory "${sub}" deleted.`;
     setSubcatSuccess(msg);
     setTimeout(() => setSubcatSuccess(null), 4000);
   };
@@ -284,29 +291,244 @@ export const SettingsPage: React.FC = () => {
 
   // Profile form state
   const [name, setName] = useState(user.name);
-  const isInitialCustom =
-    user.settings.currency.startsWith('custom:') ||
-    !['EUR', 'USD', 'GBP', 'CHF'].includes(user.settings.currency);
+  const [activeCurrency, setActiveCurrency] = useState<string>(() => {
+    const raw = user.settings.currency || 'USD';
+    return raw.replace('custom:', '').trim() || 'USD';
+  });
 
-  const [currencyMode, setCurrencyMode] = useState<'preset' | 'custom'>(
-    isInitialCustom ? 'custom' : 'preset'
-  );
-  const [selectedPreset, setSelectedPreset] = useState<string>(
-    isInitialCustom ? 'EUR' : user.settings.currency
-  );
-  const [customCurrencyText, setCustomCurrencyText] = useState<string>(
-    user.settings.currency.startsWith('custom:')
-      ? user.settings.currency.replace('custom:', '').trim()
-      : isInitialCustom
-      ? user.settings.currency.trim()
-      : 'kr'
-  );
+  const [customCurrencies, setCustomCurrencies] = useState<string[]>(() => {
+    let localSaved: string[] = [];
+    try {
+      const raw = localStorage.getItem('contractwatch_custom_currencies');
+      if (raw) localSaved = JSON.parse(raw);
+    } catch {}
+
+    const fromSettings = user.settings.customCurrencies || [];
+    const current = (user.settings.currency || '').replace('custom:', '').trim();
+    const set = new Set<string>();
+
+    [...localSaved, ...fromSettings].forEach((sym) => {
+      const clean = sym.replace(/[^A-Za-z]/g, '').trim().toUpperCase().slice(0, 3);
+      if (clean && !['USD', 'EUR', 'GBP', 'CHF'].includes(clean)) {
+        set.add(clean);
+      }
+    });
+
+    if (current && !['USD', 'EUR', 'GBP', 'CHF'].includes(current.toUpperCase())) {
+      const clean = current.replace(/[^A-Za-z]/g, '').trim().toUpperCase().slice(0, 3);
+      if (clean) set.add(clean);
+    }
+
+    return Array.from(set);
+  });
+
+  const DEFAULT_SUGGESTIONS = useMemo(() => ['CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'JPY', 'PLN', 'BRL'], []);
+
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('contractwatch_dismissed_currency_suggestions');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map((s) => String(s).toUpperCase());
+        }
+      }
+    } catch {}
+    return [];
+  });
+
+  const visibleSuggestions = useMemo(() => {
+    return DEFAULT_SUGGESTIONS.filter((sym) => {
+      const isDismissed = dismissedSuggestions.includes(sym);
+      const isAlreadyCustom = customCurrencies.some(
+        (c) => c.replace(/[^A-Za-z]/g, '').trim().toUpperCase() === sym
+      );
+      return !isDismissed && !isAlreadyCustom;
+    });
+  }, [DEFAULT_SUGGESTIONS, dismissedSuggestions, customCurrencies]);
+
+  const handleDismissSuggestion = (sym: string) => {
+    const clean = sym.replace(/[^A-Za-z]/g, '').trim().toUpperCase();
+    const updated = Array.from(new Set([...dismissedSuggestions, clean]));
+    setDismissedSuggestions(updated);
+    try {
+      localStorage.setItem('contractwatch_dismissed_currency_suggestions', JSON.stringify(updated));
+    } catch {}
+    setCurrencyNotice(`Quick suggestion "${clean}" removed.`);
+    setTimeout(() => setCurrencyNotice(null), 3000);
+  };
+
+  const handleResetSuggestions = () => {
+    setDismissedSuggestions([]);
+    try {
+      localStorage.removeItem('contractwatch_dismissed_currency_suggestions');
+    } catch {}
+    setCurrencyNotice('Quick suggestions restored.');
+    setTimeout(() => setCurrencyNotice(null), 3000);
+  };
+
+  const [newCurrencyInput, setNewCurrencyInput] = useState<string>('');
+  const [newCurrencyError, setNewCurrencyError] = useState<string | null>(null);
+  const [currencyNotice, setCurrencyNotice] = useState<string | null>(null);
+  const [editingCurrency, setEditingCurrency] = useState<{ oldCode: string; newCode: string } | null>(null);
+
+  const handleAddCustomCurrency = (codeToAdd?: string) => {
+    const raw = (codeToAdd || newCurrencyInput).replace(/[^A-Za-z]/g, '').trim().toUpperCase().slice(0, 3);
+    if (!raw) return;
+    if (raw.length > 3) {
+      setNewCurrencyError('Max 3 letters');
+      return;
+    }
+    setNewCurrencyError(null);
+
+    let updated = customCurrencies;
+    if (
+      !customCurrencies.some((c) => c.toUpperCase() === raw) &&
+      !['USD', 'EUR', 'GBP', 'CHF'].includes(raw)
+    ) {
+      updated = [...customCurrencies, raw];
+      setCustomCurrencies(updated);
+    }
+    setActiveCurrency(raw);
+    setNewCurrencyInput('');
+
+    // If it was in dismissed suggestions, remove it from dismissed
+    if (dismissedSuggestions.includes(raw)) {
+      const updatedDismissed = dismissedSuggestions.filter((s) => s !== raw);
+      setDismissedSuggestions(updatedDismissed);
+      try {
+        localStorage.setItem(
+          'contractwatch_dismissed_currency_suggestions',
+          JSON.stringify(updatedDismissed)
+        );
+      } catch {}
+    }
+
+    try {
+      localStorage.setItem('contractwatch_custom_currencies', JSON.stringify(updated));
+    } catch {}
+
+    updateUserSettings({
+      currency: raw,
+      customCurrencies: updated,
+    });
+
+    setCurrencyNotice(`Currency "${raw}" added.`);
+    setTimeout(() => setCurrencyNotice(null), 3000);
+  };
+
+  const handleSelectCurrency = (code: string) => {
+    const clean = code.trim().toUpperCase();
+    setActiveCurrency(clean);
+    updateUserSettings({
+      currency: clean,
+    });
+    setCurrencyNotice(`Active currency set to ${clean}.`);
+    setTimeout(() => setCurrencyNotice(null), 3000);
+  };
+
+  const handleStartEditCurrency = (code: string) => {
+    setEditingCurrency({ oldCode: code, newCode: code });
+  };
+
+  const handleSaveEditCurrency = () => {
+    if (!editingCurrency) return;
+    const oldTarget = editingCurrency.oldCode.replace(/[^A-Za-z]/g, '').trim().toUpperCase();
+    const sanitized = editingCurrency.newCode.replace(/[^A-Za-z]/g, '').trim().toUpperCase().slice(0, 3);
+    if (!sanitized) {
+      setEditingCurrency(null);
+      return;
+    }
+
+    const updated = customCurrencies.map((c) =>
+      c.replace(/[^A-Za-z]/g, '').trim().toUpperCase() === oldTarget ? sanitized : c
+    );
+    const nextActive =
+      activeCurrency.replace(/[^A-Za-z]/g, '').trim().toUpperCase() === oldTarget
+        ? sanitized
+        : activeCurrency;
+
+    setCustomCurrencies(updated);
+    if (activeCurrency.replace(/[^A-Za-z]/g, '').trim().toUpperCase() === oldTarget) {
+      setActiveCurrency(sanitized);
+    }
+    setEditingCurrency(null);
+
+    try {
+      localStorage.setItem('contractwatch_custom_currencies', JSON.stringify(updated));
+    } catch {}
+
+    updateUserSettings({
+      currency: nextActive,
+      customCurrencies: updated,
+    });
+
+    setCurrencyNotice(`Currency "${oldTarget}" changed to "${sanitized}".`);
+    setTimeout(() => setCurrencyNotice(null), 3000);
+  };
+
+  const handleDeleteCustomCurrency = (codeToDelete: string) => {
+    const cleanTarget = codeToDelete.replace(/[^A-Za-z]/g, '').trim().toUpperCase();
+    const updated = customCurrencies.filter(
+      (c) => c.replace(/[^A-Za-z]/g, '').trim().toUpperCase() !== cleanTarget
+    );
+    const nextActive =
+      activeCurrency.replace(/[^A-Za-z]/g, '').trim().toUpperCase() === cleanTarget
+        ? 'USD'
+        : activeCurrency;
+
+    setCustomCurrencies(updated);
+    setActiveCurrency(nextActive);
+    if (editingCurrency && editingCurrency.oldCode.replace(/[^A-Za-z]/g, '').trim().toUpperCase() === cleanTarget) {
+      setEditingCurrency(null);
+    }
+
+    // ALSO remove this currency from quick suggestions!
+    const updatedDismissed = Array.from(new Set([...dismissedSuggestions, cleanTarget]));
+    setDismissedSuggestions(updatedDismissed);
+    try {
+      localStorage.setItem(
+        'contractwatch_dismissed_currency_suggestions',
+        JSON.stringify(updatedDismissed)
+      );
+    } catch {}
+
+    try {
+      localStorage.setItem('contractwatch_custom_currencies', JSON.stringify(updated));
+    } catch {}
+
+    updateUserSettings({
+      currency: nextActive,
+      customCurrencies: updated,
+    });
+
+    setCurrencyNotice(`Currency "${cleanTarget}" and its quick suggestion removed.`);
+    setTimeout(() => setCurrencyNotice(null), 3000);
+  };
+
   const [timezone, setTimezone] = useState(user.settings.timezone);
+  const [timezoneSearch, setTimezoneSearch] = useState('');
 
-  const effectiveCurrency =
-    currencyMode === 'custom'
-      ? `custom:${customCurrencyText.trim() || 'EUR'}`
-      : selectedPreset;
+  const allTimezoneOptions = useMemo(() => getTimezoneOptions(), []);
+  const groupedTimezones = useMemo(() => getGroupedTimezoneOptions(), []);
+
+  const filteredTimezones = useMemo(() => {
+    const q = timezoneSearch.trim().toLowerCase();
+    if (!q) return null;
+    return allTimezoneOptions.filter(
+      (opt) =>
+        opt.value.toLowerCase().includes(q) ||
+        opt.label.toLowerCase().includes(q) ||
+        opt.name.toLowerCase().includes(q) ||
+        opt.cities.toLowerCase().includes(q) ||
+        opt.region.toLowerCase().includes(q)
+    );
+  }, [allTimezoneOptions, timezoneSearch]);
+
+  const handleDetectDeviceTimezone = () => {
+    const detected = getLocalDeviceTimezone();
+    setTimezone(detected);
+  };
 
   // Channels: Only In-App Bell Drawer
   const [inApp, setInApp] = useState(user.settings.channels?.inApp ?? true);
@@ -319,22 +541,12 @@ export const SettingsPage: React.FC = () => {
   // Keep form fields synced if user state updates from auth/Firestore
   useEffect(() => {
     setName(user.name);
-    const isCustom =
-      user.settings.currency.startsWith('custom:') ||
-      !['EUR', 'USD', 'GBP', 'CHF'].includes(user.settings.currency);
-    setCurrencyMode(isCustom ? 'custom' : 'preset');
-    setSelectedPreset(isCustom ? 'EUR' : user.settings.currency);
-    setCustomCurrencyText(
-      user.settings.currency.startsWith('custom:')
-        ? user.settings.currency.replace('custom:', '').trim()
-        : isCustom
-        ? user.settings.currency.trim()
-        : 'kr'
-    );
+    const rawCurr = (user.settings.currency || 'USD').replace('custom:', '').trim() || 'USD';
+    setActiveCurrency(rawCurr);
     setTimezone(user.settings.timezone);
     setInApp(user.settings.channels?.inApp ?? true);
     setLeadTimes(user.settings.defaultReminders || [90, 60, 30, 14, 7, 1]);
-  }, [user.name, user.settings]);
+  }, [user.name, user.settings.currency, user.settings.timezone, user.settings.channels?.inApp]);
 
   const handleToggleInApp = (nextVal: boolean) => {
     setInApp(nextVal);
@@ -374,11 +586,13 @@ export const SettingsPage: React.FC = () => {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
+    const resolvedName = name.trim() || user.name || (user.email ? user.email.split('@')[0] : 'User');
     try {
       await updateUserProfile({
-        name: name.trim() || 'Stefan Martinali',
+        name: resolvedName,
         settings: {
-          currency: effectiveCurrency,
+          currency: activeCurrency,
+          customCurrencies,
           timezone,
           defaultReminders: leadTimes,
           channels: {
@@ -398,21 +612,27 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleResetToStefan = async () => {
-    setName('Stefan Martinali');
-    setCurrencyMode('preset');
-    setSelectedPreset('EUR');
-    setTimezone('Europe/Amsterdam');
+  const handleResetToDefaults = async () => {
+    const preservedName = user.name || (user.email ? user.email.split('@')[0] : 'User');
+    setName(preservedName);
+    setActiveCurrency('USD');
+    setCustomCurrencies([]);
+    setTimezone('America/New_York');
     setInApp(true);
     setLeadTimes([90, 60, 30, 14, 7, 0]);
+    setDismissedSuggestions([]);
+    try {
+      localStorage.removeItem('contractwatch_dismissed_currency_suggestions');
+    } catch {}
     setIsSavingProfile(true);
     try {
       await updateUserProfile({
-        name: 'Stefan Martinali',
+        name: preservedName,
         settings: {
           ...DEFAULT_USER.settings,
-          currency: 'EUR',
-          timezone: 'Europe/Amsterdam',
+          currency: 'USD',
+          customCurrencies: [],
+          timezone: 'America/New_York',
           defaultReminders: [90, 60, 30, 14, 7, 0],
           channels: {
             inApp: true,
@@ -666,150 +886,393 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Currency & Symbol
-                    </label>
-                    <p className="text-[11px] text-slate-500">
-                      Choose a standard currency or enter custom letters (e.g. kr, DKK, CAD, CHF, EUR).
-                    </p>
-                  </div>
-                  {/* Mode switch */}
-                  <div className="flex p-0.5 bg-slate-200/80 dark:bg-slate-700 rounded-xl text-[11px] font-semibold self-start sm:self-auto">
-                    <button
-                      type="button"
-                      onClick={() => setCurrencyMode('preset')}
-                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                        currencyMode === 'preset'
-                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-2xs font-bold'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                      }`}
-                    >
-                      Presets
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrencyMode('custom')}
-                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                        currencyMode === 'custom'
-                          ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-2xs font-bold'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                      }`}
-                    >
-                      Custom Letters
-                    </button>
-                  </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Primary Currency
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Select a standard global currency or one of your custom 3-letter currencies.
+                  </p>
                 </div>
 
-                {currencyMode === 'preset' ? (
-                  <div>
-                    <select
-                      value={selectedPreset}
-                      onChange={(e) => setSelectedPreset(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-medium"
-                    >
+                {/* Primary Currency Select Dropdown */}
+                <div>
+                  <select
+                    value={activeCurrency}
+                    onChange={(e) => setActiveCurrency(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-medium"
+                  >
+                    <optgroup label="Standard Presets">
+                      <option value="USD">USD ($) — United States Dollar (Default)</option>
                       <option value="EUR">EUR (€) — Eurozone</option>
-                      <option value="USD">USD ($) — United States Dollar</option>
                       <option value="GBP">GBP (£) — British Pound</option>
                       <option value="CHF">CHF (CHF) — Swiss Franc</option>
-                    </select>
+                    </optgroup>
+                    {customCurrencies.length > 0 && (
+                      <optgroup label="Additional Currencies (Custom)">
+                        {customCurrencies.map((c) => (
+                          <option key={c} value={c}>
+                            {c} ({c}) — Custom Currency
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+
+                {/* Additional Currencies Management (Add, Select & Edit max 3 letters) */}
+                <div className="pt-3 border-t border-slate-200/80 dark:border-slate-700/80 space-y-3">
+                  {currencyNotice && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold animate-in fade-in">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>{currencyNotice}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        Additional Currencies (Max 3 Letters)
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {customCurrencies.length} custom {customCurrencies.length === 1 ? 'currency' : 'currencies'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Add, select, and edit custom currencies linked to up to three letters (e.g. CAD, AUD, SEK, NOK, DKK, JPY, PLN).
+                    </p>
                   </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Custom currency symbol (letters, e.g. kr, DKK, SEK, CHF, CAD, EUR):
-                      </label>
-                      <div className="flex gap-2 items-center">
+
+                  {/* Add Input row */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
                         <input
                           type="text"
-                          maxLength={6}
-                          value={customCurrencyText}
+                          maxLength={3}
+                          value={newCurrencyInput}
                           onChange={(e) => {
-                            // Filter input strictly to letters
-                            const filtered = e.target.value.replace(/[^A-Za-zÀ-ž]/g, '');
-                            setCustomCurrencyText(filtered);
+                            const val = e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase();
+                            setNewCurrencyInput(val);
+                            if (newCurrencyError) setNewCurrencyError(null);
                           }}
-                          placeholder="e.g. kr"
-                          className="w-36 px-3 py-2 rounded-xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-indigo-500 shadow-2xs"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddCustomCurrency();
+                            }
+                          }}
+                          placeholder="CAD"
+                          className="w-28 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-xs font-mono font-bold uppercase tracking-wider text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
                         />
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          (max. 6 letters)
-                        </span>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddCustomCurrency()}
+                        disabled={!newCurrencyInput.trim()}
+                        className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Currency</span>
+                      </button>
                     </div>
 
+                    {newCurrencyError && (
+                      <p className="text-[11px] text-rose-500 font-medium">
+                        {newCurrencyError}
+                      </p>
+                    )}
+
                     {/* Quick suggestion chips */}
-                    <div>
-                      <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block mb-1">
-                        Quick suggestions:
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {['kr', 'CHF', 'DKK', 'SEK', 'NOK', 'CAD', 'AUD', 'EUR', 'USD', 'PLN'].map((sym) => (
+                    <div className="pt-1">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                          Quick suggestions:
+                        </span>
+                        {dismissedSuggestions.length > 0 && (
                           <button
-                            key={sym}
                             type="button"
-                            onClick={() => setCustomCurrencyText(sym)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer border ${
-                              customCurrencyText.toLowerCase() === sym.toLowerCase()
-                                ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-2xs'
-                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600'
-                            }`}
+                            onClick={handleResetSuggestions}
+                            className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                            title="Restore default quick suggestions"
                           >
-                            {sym}
+                            Reset suggestions
                           </button>
-                        ))}
+                        )}
                       </div>
+
+                      {visibleSuggestions.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {visibleSuggestions.map((sym) => (
+                            <div
+                              key={sym}
+                              className="inline-flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors shadow-2xs group"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleAddCustomCurrency(sym)}
+                                className="px-2 py-1 text-xs font-mono font-medium hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer flex items-center gap-1"
+                                title={`Add ${sym}`}
+                              >
+                                <Plus className="w-3 h-3 text-indigo-500" />
+                                <span>{sym}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  handleDismissSuggestion(sym);
+                                }}
+                                className="pr-1.5 pl-0.5 py-1 text-slate-300 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                title={`Remove suggestion ${sym}`}
+                                aria-label={`Remove suggestion ${sym}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 py-0.5">
+                          <span>All suggestions added or dismissed.</span>
+                          {dismissedSuggestions.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleResetSuggestions}
+                              className="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer font-medium"
+                            >
+                              Restore defaults
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
+
+                  {/* List of custom currencies with Edit, Select, and Delete */}
+                  {customCurrencies.length > 0 && (
+                    <div className="pt-2">
+                      <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+                        Your custom currencies:
+                      </span>
+                      <div className="space-y-1.5">
+                        {customCurrencies.map((c) => {
+                          const isEditing = editingCurrency?.oldCode === c;
+                          const isActive = activeCurrency === c;
+
+                          if (isEditing) {
+                            return (
+                              <div
+                                key={c}
+                                className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-500 shadow-2xs animate-in fade-in"
+                              >
+                                <span className="text-[11px] text-slate-400">Edit code:</span>
+                                <input
+                                  type="text"
+                                  maxLength={3}
+                                  value={editingCurrency.newCode}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase();
+                                    setEditingCurrency({ ...editingCurrency, newCode: val });
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveEditCurrency();
+                                    } else if (e.key === 'Escape') {
+                                      setEditingCurrency(null);
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="w-20 px-2 py-1 text-xs font-mono font-bold uppercase rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 focus:outline-hidden"
+                                />
+                                <span className="text-[10px] text-slate-400 font-mono">(max 3 letters)</span>
+                                <div className="ml-auto flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveEditCurrency}
+                                    className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 cursor-pointer"
+                                    title="Save changes"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCurrency(null)}
+                                    className="p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={c}
+                              className={`flex items-center justify-between p-2 rounded-xl border transition-all ${
+                                isActive
+                                  ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 font-mono font-bold text-xs text-slate-900 dark:text-white">
+                                  {c}
+                                </span>
+                                {isActive ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
+                                    <Check className="w-3 h-3" />
+                                    Active Currency
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectCurrency(c)}
+                                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                                  >
+                                    Set as active
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditCurrency(c)}
+                                  className="p-1 rounded text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                                  title={`Edit ${c}`}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    handleDeleteCustomCurrency(c);
+                                  }}
+                                  className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
+                                  title={`Delete ${c}`}
+                                  aria-label={`Delete ${c}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Live Preview Box */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs">
                   <div className="flex items-center gap-1.5 text-slate-500 font-medium">
                     <span>Live in-app preview:</span>
                     <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-bold text-slate-700 dark:text-slate-300">
-                      {getCurrencyLabel(effectiveCurrency)}
+                      {getCurrencyLabel(activeCurrency)}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                    <span>{formatCurrency(1249.5, effectiveCurrency)} / yr</span>
+                    <span>{formatCurrency(1249.5, activeCurrency)} / yr</span>
                     <span className="text-slate-300 dark:text-slate-700">•</span>
                     <span className="text-slate-700 dark:text-slate-300 font-normal">
-                      {formatCurrency(104.13, effectiveCurrency)} / mo
+                      {formatCurrency(104.13, activeCurrency)} / mo
                     </span>
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Timezone for Deadline Calculations
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Timezone for Deadline Calculations
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleDetectDeviceTimezone}
+                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Detect and use device timezone"
+                  >
+                    <Globe className="w-3 h-3" />
+                    <span>Detect Device Timezone</span>
+                  </button>
+                </div>
+
+                {/* Quick search filter for curated timezones */}
+                <div className="relative mb-2">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={timezoneSearch}
+                    onChange={(e) => setTimezoneSearch(e.target.value)}
+                    placeholder="Quick filter (e.g. Amsterdam, Paris, New York, Tokyo, London)..."
+                    className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-colors"
+                  />
+                  {timezoneSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setTimezoneSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
                 <select
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-sans"
                 >
-                  <option value="America/New_York">
-                    America/New_York (Eastern Time, UTC-5)
-                  </option>
-                  <option value="America/Chicago">
-                    America/Chicago (Central Time, UTC-6)
-                  </option>
-                  <option value="America/Denver">
-                    America/Denver (Mountain Time, UTC-7)
-                  </option>
-                  <option value="America/Los_Angeles">
-                    America/Los_Angeles (Pacific Time, UTC-8)
-                  </option>
-                  <option value="Europe/Amsterdam">
-                    Europe/Amsterdam (CET, UTC+1)
-                  </option>
-                  <option value="Europe/London">Europe/London (GMT, UTC+0)</option>
-                  <option value="UTC">UTC (Universal Coordinated Time)</option>
+                  {filteredTimezones ? (
+                    <>
+                      {filteredTimezones.length === 0 ? (
+                        <option value={timezone} disabled>
+                          No matching timezone for "{timezoneSearch}"
+                        </option>
+                      ) : (
+                        filteredTimezones.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Ensure current timezone is always validly selected */}
+                      {!allTimezoneOptions.some((o) => o.value === timezone) && (
+                        <option value={timezone}>
+                          {timezone} ({formatTimezoneOffset(timezone) || 'UTC'})
+                        </option>
+                      )}
+                      {Object.entries(groupedTimezones).map(([region, opts]) => (
+                        <optgroup key={region} label={region}>
+                          {opts.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </>
+                  )}
                 </select>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 gap-1">
+                  <span>
+                    Active: <strong className="text-slate-800 dark:text-slate-200 font-mono">{timezone}</strong> ({formatTimezoneOffset(timezone) || 'UTC'})
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Standard regional bands (duplicates consolidated)
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -853,7 +1316,7 @@ export const SettingsPage: React.FC = () => {
                   Notification Delivery Channels
                 </label>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Schakel het in-app notificatiepaneel (de bel rechtsboven) in of uit voor opzegtermijn- en verlengingssignalen.
+                  Toggle the in-app notification bell drawer in the top navigation for cancellation and renewal alerts.
                 </p>
               </div>
               <div className="max-w-lg">
@@ -880,16 +1343,16 @@ export const SettingsPage: React.FC = () => {
                         <span>In-App Bell Drawer</span>
                         {inApp ? (
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                            Ingeschakeld
+                            Enabled
                           </span>
                         ) : (
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500">
-                            Uitgeschakeld
+                            Disabled
                           </span>
                         )}
                       </div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Live meldingsbadge en notificatiepaneel in de navigatiebalk
+                        Live notification badge and drawer in the top navigation bar
                       </div>
                     </div>
                   </div>
@@ -922,29 +1385,29 @@ export const SettingsPage: React.FC = () => {
                   {isSavingProfile ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Opslaan...</span>
+                      <span>Saving...</span>
                     </>
                   ) : (
-                    <span>Profiel Opslaan</span>
+                    <span>Save Profile</span>
                   )}
                 </button>
 
                 <button
                   type="button"
-                  onClick={handleResetToStefan}
+                  onClick={handleResetToDefaults}
                   disabled={isSavingProfile}
-                  title="Herstel naar Stefan Martinali (Euro, Amsterdam)"
+                  title="Reset preferences to default (USD, America/New_York)"
                   className="px-3 py-2.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-medium transition cursor-pointer inline-flex items-center gap-1.5"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Standaard instellen (Stefan Martinali, EUR)</span>
+                  <span>Reset to Defaults (USD, New York)</span>
                 </button>
               </div>
 
               {savedSuccess && (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold animate-in fade-in">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span>Gegevens succesvol opgeslagen!</span>
+                  <span>Settings saved successfully!</span>
                 </div>
               )}
             </div>
@@ -958,10 +1421,10 @@ export const SettingsPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                  Contract Categorieën & Subcategorieën
+                  Contract Categories & Subcategories
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Voeg nieuwe categorieën toe, wijzig namen, iconen of kleuren, of verwijder overbodige categorieën. Wijzigingen in categorieën en subcategorieën werken <strong>direct en automatisch door</strong> naar al uw gekoppelde contracten.
+                  Add new categories, edit names, icons, or colors, or delete unneeded categories. Changes to categories and subcategories <strong>cascade automatically</strong> to all linked contracts.
                 </p>
               </div>
 
@@ -972,7 +1435,7 @@ export const SettingsPage: React.FC = () => {
                   className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Nieuwe Categorie Toevoegen</span>
+                  <span>Add New Category</span>
                 </button>
                 <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
                   <Layers className="w-3.5 h-3.5" />
@@ -998,7 +1461,7 @@ export const SettingsPage: React.FC = () => {
                   type="text"
                   value={categorySearchQuery}
                   onChange={(e) => setCategorySearchQuery(e.target.value)}
-                  placeholder="Filter op categorie of subcategorie..."
+                  placeholder="Filter by category or subcategory..."
                   className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
@@ -1027,7 +1490,7 @@ export const SettingsPage: React.FC = () => {
                         handleAddSubcategory(selectedCatId);
                       }
                     }}
-                    placeholder="Snelle subcategorie toevoegen..."
+                    placeholder="Quickly add subcategory..."
                     className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                   />
                   <button
@@ -1036,7 +1499,7 @@ export const SettingsPage: React.FC = () => {
                     disabled={!newSubcatName.trim()}
                     className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs transition-colors shrink-0"
                   >
-                    + Toevoegen
+                    + Add
                   </button>
                 </div>
               </div>
@@ -1079,20 +1542,22 @@ export const SettingsPage: React.FC = () => {
                               </h4>
                               {cat.isDefault && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                                  Standaard
+                                  Default
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5">
                               <span>
-                                <strong>{countOfContracts}</strong> contract(en)
+                                <strong>{countOfContracts}</strong> contract{countOfContracts === 1 ? '' : 's'}
                               </span>
                               <span>•</span>
                               <span>
-                                <strong>{formatCurrency(totalSpend, user.settings.currency)}</strong>/jr
+                                <strong>{formatCurrency(totalSpend, user.settings.currency)}</strong>/yr
                               </span>
                               <span>•</span>
-                              <span>{cat.subcategories.length} subcategorieën</span>
+                              <span>
+                                {cat.subcategories.length} {cat.subcategories.length === 1 ? 'subcategory' : 'subcategories'}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1103,20 +1568,20 @@ export const SettingsPage: React.FC = () => {
                             type="button"
                             onClick={() => handleOpenEditCategory(cat)}
                             className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                            title={`Categorie "${cat.name}" wijzigen`}
+                            title={`Edit category "${cat.name}"`}
                           >
                             <Pencil className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
-                            <span>Wijzigen</span>
+                            <span>Edit</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => handleOpenDeleteCategory(cat)}
                             className="px-2.5 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                            title={`Categorie "${cat.name}" verwijderen`}
+                            title={`Delete category "${cat.name}"`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                            <span>Verwijderen</span>
+                            <span>Delete</span>
                           </button>
                         </div>
                       </div>
@@ -1124,9 +1589,9 @@ export const SettingsPage: React.FC = () => {
                       {/* Subcategories Badges List */}
                       <div className="space-y-2 pt-1">
                         <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                          <span>Subcategorieën ({cat.subcategories.length})</span>
+                          <span>Subcategories ({cat.subcategories.length})</span>
                           <span className="text-[10px] text-slate-400">
-                            Klik op potloodje om direct te hernoemen
+                            Click pencil icon to rename directly
                           </span>
                         </div>
 
@@ -1170,7 +1635,7 @@ export const SettingsPage: React.FC = () => {
                                     type="button"
                                     onClick={handleSaveInlineRenameSubcat}
                                     className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer"
-                                    title="Opslaan & doorvoeren naar contracten"
+                                    title="Save & apply to contracts"
                                   >
                                     <Check className="w-3.5 h-3.5" />
                                   </button>
@@ -1178,7 +1643,7 @@ export const SettingsPage: React.FC = () => {
                                     type="button"
                                     onClick={() => setInlineEditingSubcat(null)}
                                     className="p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
-                                    title="Annuleren"
+                                    title="Cancel"
                                   >
                                     <X className="w-3.5 h-3.5" />
                                   </button>
@@ -1198,7 +1663,7 @@ export const SettingsPage: React.FC = () => {
                                 {count > 0 && (
                                   <span
                                     className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
-                                    title={`${count} contract(en) gebruiken deze subcategorie`}
+                                    title={`${count} contract(s) use this subcategory`}
                                   >
                                     {count}
                                   </span>
@@ -1214,7 +1679,7 @@ export const SettingsPage: React.FC = () => {
                                       newSub: sub,
                                     })
                                   }
-                                  title={`Hernoem "${sub}" (werkt door naar ${count} contract(en))`}
+                                  title={`Rename "${sub}" (cascades to ${count} contract(s))`}
                                   className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition cursor-pointer ml-0.5"
                                 >
                                   <Pencil className="w-3 h-3" />
@@ -1225,7 +1690,7 @@ export const SettingsPage: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveSubcatWithCascade(cat.id, sub)}
-                                    title={`Verwijder "${sub}"`}
+                                    title={`Delete "${sub}"`}
                                     className="w-4 h-4 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition ml-0.5 cursor-pointer"
                                   >
                                     &times;
@@ -1253,7 +1718,7 @@ export const SettingsPage: React.FC = () => {
                                 handleQuickAddSubcatToCat(cat.id);
                               }
                             }}
-                            placeholder={`+ Subcategorie toevoegen aan ${cat.name}...`}
+                            placeholder={`+ Add subcategory to ${cat.name}...`}
                             className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                           />
                           <button
@@ -1262,7 +1727,7 @@ export const SettingsPage: React.FC = () => {
                             disabled={!(quickSubcatByCatId[cat.id] || '').trim()}
                             className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-600 hover:text-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 rounded-lg text-xs font-semibold cursor-pointer transition shadow-2xs"
                           >
-                            + Toevoegen
+                            + Add
                           </button>
                         </div>
                       </div>
@@ -1280,10 +1745,10 @@ export const SettingsPage: React.FC = () => {
               }).length === 0 && (
                 <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
                   <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    Geen categorieën gevonden voor "{categorySearchQuery}"
+                    No categories found for "{categorySearchQuery}"
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    Probeer een andere zoekterm of voeg een nieuwe categorie toe met de knop hierboven.
+                    Try another search query or add a new category using the button above.
                   </p>
                 </div>
               )}

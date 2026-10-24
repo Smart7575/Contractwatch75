@@ -83,13 +83,14 @@ export const DEFAULT_CATEGORIES: Category[] = [
 
 export const DEFAULT_USER: User = {
   id: 'usr_default',
-  email: 'stefan.martinali@example.com',
-  name: 'Stefan Martinali',
+  email: '',
+  name: 'User',
   provider: 'email',
   settings: {
     theme: 'light',
-    currency: 'EUR',
-    timezone: 'Europe/Amsterdam',
+    currency: 'USD',
+    customCurrencies: [],
+    timezone: 'America/New_York',
     language: 'en',
     defaultReminders: [90, 60, 30, 14, 7, 0],
     channels: {
@@ -99,10 +100,10 @@ export const DEFAULT_USER: User = {
       weeklyDigest: false,
     },
     comparisonSites: {
-      energy: 'https://www.gaslicht.com',
-      telecom: 'https://www.bellen.com',
-      insurance: 'https://www.independer.nl',
-      subscriptions: 'https://www.consumentenbond.nl',
+      energy: 'https://www.energysage.com',
+      telecom: 'https://www.whistleout.com',
+      insurance: 'https://www.policygenius.com',
+      subscriptions: 'https://www.rocketmoney.com',
     },
   },
   createdAt: '2026-01-15T10:00:00.000Z',
@@ -164,8 +165,8 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
         },
       ],
       priceHistory: [
-        { id: 'ph_1', date: '2024-10-25', annualCost: 1980, monthlyCost: 165, note: 'Initial 1-year promotional supply rate' },
         { id: 'ph_2', date: '2025-10-25', annualCost: 2160, monthlyCost: 180, note: 'Delivery fee adjustment (+15/mo)' },
+        { id: 'ph_1', date: '2024-10-25', annualCost: 1980, monthlyCost: 165, note: 'Initial 1-year promotional supply rate' },
       ],
       alternativeCost: 1820,
       checklist: [
@@ -646,25 +647,34 @@ export function loadUser(): User {
       if (parsed) {
         const rawName = (parsed.name || '').toLowerCase();
         const isLegacyDummy =
+          rawName.includes('stefan') ||
+          rawName.includes('martinali') ||
           rawName.includes('jordan') ||
-          rawName.includes('hayes') ||
-          (parsed.name === 'Stefan Martinali' && parsed.settings?.currency === 'USD');
+          rawName.includes('hayes');
 
         if (isLegacyDummy) {
           const sanitized: User = {
+            ...DEFAULT_USER,
             ...parsed,
-            name: rawName.includes('jordan') || rawName.includes('hayes') ? 'Stefan Martinali' : parsed.name,
+            name: parsed.email ? parsed.email.split('@')[0] : 'User',
             settings: {
               ...DEFAULT_USER.settings,
               ...(parsed.settings || {}),
-              currency: parsed.settings?.currency === 'USD' ? 'EUR' : (parsed.settings?.currency || 'EUR'),
-              timezone: parsed.settings?.timezone === 'America/New_York' ? 'Europe/Amsterdam' : (parsed.settings?.timezone || 'Europe/Amsterdam'),
+              currency: parsed.settings?.currency || 'USD',
+              timezone: parsed.settings?.timezone || 'America/New_York',
             },
           };
           saveUser(sanitized);
           return sanitized;
         }
-        return parsed;
+        return {
+          ...DEFAULT_USER,
+          ...parsed,
+          settings: {
+            ...DEFAULT_USER.settings,
+            ...(parsed.settings || {}),
+          },
+        };
       }
     }
   } catch (err) {

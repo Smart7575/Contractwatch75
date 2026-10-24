@@ -46,6 +46,43 @@ export function calculateCancellationDeadline(
 }
 
 /**
+ * Shift a YYYY-MM-DD date string by exactly 1 year.
+ * Correctly accounts for leap years (e.g. Feb 29 -> Feb 28 on non-leap years).
+ */
+export function shiftDateByOneYear(dateStr?: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      const nextYear = year + 1;
+      let targetDay = day;
+      if (month === 2 && day === 29) {
+        const isNextLeap = (nextYear % 4 === 0 && nextYear % 100 !== 0) || (nextYear % 400 === 0);
+        if (!isNextLeap) {
+          targetDay = 28;
+        }
+      }
+      const mm = String(month).padStart(2, '0');
+      const dd = String(targetDay).padStart(2, '0');
+      return `${nextYear}-${mm}-${dd}`;
+    }
+  }
+
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    d.setFullYear(d.getFullYear() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return dateStr;
+}
+
+/**
  * Calculates remaining days from today until the target date
  */
 export function getDaysRemaining(targetDateStr: string): number {

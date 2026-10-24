@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ArrowUpDown,
   Key,
+  RotateCw,
 } from 'lucide-react';
 
 interface TableViewProps {
@@ -24,7 +25,7 @@ interface TableViewProps {
 }
 
 export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
-  const { setSelectedContractId, categories, user, filters, setFilters } = useApp();
+  const { setSelectedContractId, rollForwardContract, categories, user, filters, setFilters } = useApp();
 
   const handleSort = (field: 'deadline' | 'annualCost' | 'name' | 'supplier') => {
     if (filters.sortBy === field) {
@@ -181,13 +182,23 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
 
                 {/* Actions */}
                 <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => setSelectedContractId(contract.id)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition"
-                  >
-                    <span>Dossier</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="inline-flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => rollForwardContract(contract.id)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-200/60 dark:border-indigo-800/60 rounded-lg transition cursor-pointer"
+                      title="Roll forward contract (+1 year term, keep documents)"
+                    >
+                      <RotateCw className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                      <span>Roll Forward</span>
+                    </button>
+                    <button
+                      onClick={() => setSelectedContractId(contract.id)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition cursor-pointer"
+                    >
+                      <span>Dossier</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             );

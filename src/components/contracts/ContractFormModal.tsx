@@ -36,6 +36,7 @@ import {
   EyeOff,
   User as UserIcon,
   Users,
+  RotateCw,
 } from 'lucide-react';
 
 interface ContractFormModalProps {
@@ -49,7 +50,9 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { addContract, updateContract, categories, addSubcategory, user } = useApp();
+  const { addContract, updateContract, deleteContract, categories, addSubcategory, user } = useApp();
+
+  const isRollForward = Boolean(initialContract?.id?.startsWith('cw_rolled_'));
 
   const [step, setStep] = useState<1 | 2>(1);
 
@@ -353,6 +356,38 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
         addedAt: new Date().toISOString(),
       })),
       alternativeCost: alternativeCost ? Number(alternativeCost) : undefined,
+      priceHistory: (() => {
+        const existing = initialContract?.priceHistory ? [...initialContract.priceHistory] : [];
+        const hasPriceChanged = initialContract && Number(annualCost) !== initialContract.annualCost;
+
+        if (hasPriceChanged) {
+          if (existing.length === 0 && initialContract.startDate) {
+            existing.push({
+              id: `ph_${Date.now()}_prev`,
+              date: initialContract.startDate,
+              annualCost: initialContract.annualCost,
+              monthlyCost: initialContract.monthlyCost,
+              note: 'Previous contract rate',
+            });
+          }
+          existing.unshift({
+            id: `ph_${Date.now()}`,
+            date: startDate || getTodayString(),
+            annualCost: Number(annualCost) || 0,
+            monthlyCost: Number(monthlyCost) || 0,
+            note: isRollForward ? 'Rolled forward renewal rate' : 'Adjusted contract rate',
+          });
+        }
+
+        return existing.sort((a, b) => {
+          const timeA = new Date(a.date).getTime();
+          const timeB = new Date(b.date).getTime();
+          if (isNaN(timeA) || isNaN(timeB)) {
+            return (b.date || '').localeCompare(a.date || '');
+          }
+          return timeB - timeA;
+        });
+      })(),
     };
 
     if (initialContract) {
@@ -374,11 +409,16 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              {initialContract ? 'Edit Contract' : 'Add New Contract'}
+            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              {isRollForward && <RotateCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+              <span>{isRollForward ? 'Roll Forward Contract' : initialContract ? 'Edit Contract' : 'Add New Contract'}</span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {step === 1 ? 'Step 1 of 2: Core Details (<60s)' : 'Step 2 of 2: Optional Extended Details'}
+              {isRollForward
+                ? 'Review renewal pricing & dates for the new 1-year term'
+                : step === 1
+                ? 'Step 1 of 2: Core Details (<60s)'
+                : 'Step 2 of 2: Optional Extended Details'}
             </p>
           </div>
           <button
@@ -400,7 +440,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <span>1. Basisgegevens</span>
+            <span>1. Basic Details</span>
           </button>
           <button
             type="button"
@@ -414,7 +454,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
             }`}
           >
             <Key className="w-3.5 h-3.5 text-amber-500" />
-            <span>2. Details & Inloggegevens</span>
+            <span>2. Details & Credentials</span>
           </button>
         </div>
 
@@ -423,6 +463,22 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
           {step === 1 ? (
             /* STEP 1: Minimal required fields to complete in under 30 seconds */
             <div className="space-y-4">
+              {/* Roll Forward Information Banner */}
+              {isRollForward && (
+                <div className="p-3.5 rounded-2xl bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-start gap-3 animate-in fade-in">
+                  <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5">
+                    <RotateCw className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 text-xs">
+                    <div className="font-bold text-indigo-900 dark:text-indigo-200">
+                      Rolled Forward Contract (+1 Year)
+                    </div>
+                    <p className="text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                      Start date ({formatDate(startDate)}) and end date ({formatDate(endDate)}) have been shifted 1 year forward. All document links were retained. You can now adjust the price or any other terms below.
+                    </p>
+                  </div>
+                </div>
+              )}
               {/* Name & Supplier */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -711,7 +767,24 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
               </div>
 
               {/* Costs (Monthly and Annual cross-calculated) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${
+                isRollForward ? 'p-3.5 rounded-2xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30' : ''
+              }`}>
+                {isRollForward && (
+                  <div className="col-span-full flex items-center justify-between pb-1 border-b border-indigo-200/60 dark:border-indigo-800/60">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                        Renewal Price
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-600 text-white shadow-2xs">
+                        Adjust Rate Below
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
+                      Edit rate for new term
+                    </span>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Monthly Cost ({getCurrencyLabel(user.settings.currency)})
@@ -816,7 +889,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                       onChange={(e) => setAutoRenew(e.target.checked)}
                       className="rounded text-indigo-600 focus:ring-0"
                     />
-                    <span>Tacit Auto-Renewal (Stilzwijgende verlenging)</span>
+                    <span>Automatic Renewal / Evergreen Clause</span>
                   </label>
                 </div>
                 {autoRenew && (
@@ -865,7 +938,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 </div>
               </div>
 
-              {/* Inloggegevens & Portaaltoegang (Webadres, Username, Password) */}
+              {/* Customer Portal Login Credentials (URL, Username, Password) */}
               <div className="p-3.5 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/50 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
@@ -1066,13 +1139,26 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
             {step === 1 ? (
               <>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
-                >
-                  Cancel
-                </button>
+                {isRollForward && initialContract ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteContract(initialContract.id);
+                      onClose();
+                    }}
+                    className="px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition cursor-pointer"
+                  >
+                    Discard Duplicate
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1089,7 +1175,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                   >
                     <Check className="w-4 h-4" />
-                    <span>Save Contract</span>
+                    <span>{isRollForward ? 'Save Rolled Forward Contract' : initialContract ? 'Save Changes' : 'Save Contract'}</span>
                   </button>
                 </div>
               </>
@@ -1108,7 +1194,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                 >
                   <Check className="w-4 h-4" />
-                  <span>Finish & Save</span>
+                  <span>{isRollForward ? 'Finish & Save Rolled Forward Contract' : 'Finish & Save'}</span>
                 </button>
               </>
             )}

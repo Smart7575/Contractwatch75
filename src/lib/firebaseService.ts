@@ -50,6 +50,8 @@ export function formatAuthError(error: any): string {
       return 'The popup was blocked by your browser. Please allow popups.';
     case 'auth/operation-not-allowed':
       return 'This sign-in method is not enabled in the Firebase Console.';
+    case 'auth/unauthorized-domain':
+      return `Dit webdomein (${typeof window !== 'undefined' ? window.location.hostname : 'huidig adres'}) is nog niet geautoriseerd in Firebase Authentication. Voeg dit domein toe in de Firebase Console onder Authentication > Settings > Authorized domains.`;
     case 'auth/requires-recent-login':
       return 'This action requires you to have signed in recently.';
     case 'auth/too-many-requests':
@@ -71,7 +73,7 @@ export async function syncUserProfile(
   const fallbackUser: User = {
     id: fbUser.uid,
     email: fbUser.email || '',
-    name: displayName || fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Stefan Martinali'),
+    name: displayName || fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'User'),
     provider,
     settings: DEFAULT_USER.settings,
     createdAt: new Date().toISOString(),
@@ -84,16 +86,16 @@ export async function syncUserProfile(
       const rawName = (data.name || '').trim();
       const isLegacyDummyName =
         !rawName ||
+        rawName.toLowerCase().includes('stefan') ||
+        rawName.toLowerCase().includes('martinali') ||
         rawName.toLowerCase().includes('jordan') ||
         rawName.toLowerCase().includes('hayes');
 
       const resolvedName = isLegacyDummyName
-        ? (fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Stefan Martinali'))
+        ? (fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'User'))
         : (data.name || fbUser.displayName || displayName || fallbackUser.name);
 
       const userSettings = data.settings || {};
-      const isLegacyDummyCurrency = userSettings.currency === 'USD' && isLegacyDummyName;
-      const isLegacyDummyTimezone = userSettings.timezone === 'America/New_York' && isLegacyDummyName;
 
       const resolvedSettings: UserSettings = {
         ...DEFAULT_USER.settings,
@@ -102,8 +104,9 @@ export async function syncUserProfile(
           ...DEFAULT_USER.settings.channels,
           ...(userSettings.channels || {}),
         },
-        currency: isLegacyDummyCurrency ? 'EUR' : (userSettings.currency || DEFAULT_USER.settings.currency),
-        timezone: isLegacyDummyTimezone ? 'Europe/Amsterdam' : (userSettings.timezone || DEFAULT_USER.settings.timezone),
+        currency: userSettings.currency || DEFAULT_USER.settings.currency,
+        customCurrencies: userSettings.customCurrencies || [],
+        timezone: userSettings.timezone || DEFAULT_USER.settings.timezone,
       };
 
       const resolvedUser: User = {
@@ -116,7 +119,7 @@ export async function syncUserProfile(
       };
 
       // If legacy dummy data was detected in Firestore, overwrite it in the cloud database immediately
-      if (isLegacyDummyName || isLegacyDummyCurrency || isLegacyDummyTimezone) {
+      if (isLegacyDummyName) {
         setDoc(
           userRef,
           cleanForFirestore({
