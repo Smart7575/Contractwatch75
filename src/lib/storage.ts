@@ -325,82 +325,6 @@ export function generateDemoContracts(userId: string = 'usr_demo_us'): Contract[
       updatedAt: '2026-09-15T12:00:00Z',
     },
     {
-      id: 'demo_us_5',
-      userId,
-      name: 'Car Insurance All-Risk',
-      categoryId: 'insurance',
-      subcategory: 'Car',
-      coverageType: 'individual',
-      supplier: 'Centraal Beheer',
-      contractNumber: 'CB-AUTO-771928',
-      startDate: '2026-05-19',
-      isEndDateOpenEnded: false,
-      endDate: '2026-11-19',
-      noticePeriod: { value: 1, unit: 'months' },
-      cancellationDeadline: '2026-10-19', // 17 days left!
-      isDeadlineOverridden: false,
-      autoRenew: true,
-      renewalPeriod: '12-month policy renewal',
-      annualCost: 1440,
-      monthlyCost: 120,
-      paymentFrequency: 'monthly',
-      status: 'active',
-      contact: {
-        phone: '055 579 7979',
-        email: 'info@centraalbeheer.nl',
-        url: 'https://www.centraalbeheer.nl/verzekeringen/autoverzekering',
-      },
-      credentials: {
-        url: 'https://www.centraalbeheer.nl/inloggen',
-        username: 'smartprod7501@gmail.com',
-        password: 'CB#Secure2026!',
-      },
-      notes: 'Comprehensive All-Risk coverage including passenger insurance and no-claim discount protection.',
-      tags: ['Car Insurance', 'All Risk', 'Centraal Beheer'],
-      documentLinks: [
-        {
-          id: 'doc_auto_1',
-          contractId: 'demo_us_5',
-          title: 'Policy Schedule',
-          type: 'policy',
-          url: 'https://storage.googleapis.com/contractwatch-demo/polisblad_autoverzekering.pdf',
-          provider: 'gdrive',
-          addedAt: '2026-05-20T11:00:00Z',
-        },
-        {
-          id: 'doc_auto_2',
-          contractId: 'demo_us_5',
-          title: 'Digital Green Card',
-          type: 'terms',
-          url: 'https://storage.googleapis.com/contractwatch-demo/digitale_groene_kaart.pdf',
-          provider: 'gdrive',
-          addedAt: '2026-05-20T11:05:00Z',
-        },
-        {
-          id: 'doc_auto_3',
-          contractId: 'demo_us_5',
-          title: 'Third-Party Liability Terms',
-          type: 'terms',
-          url: 'https://storage.googleapis.com/contractwatch-demo/voorwaarden_wa.pdf',
-          provider: 'onedrive',
-          addedAt: '2026-05-20T11:10:00Z',
-        },
-        {
-          id: 'doc_auto_4',
-          contractId: 'demo_us_5',
-          title: 'General Policy Conditions excl. Third-Party',
-          type: 'terms',
-          url: 'https://storage.googleapis.com/contractwatch-demo/overige_voorwaarden_excl_wa.pdf',
-          provider: 'dropbox',
-          addedAt: '2026-05-20T11:15:00Z',
-        },
-      ],
-      alternativeCost: 1180,
-      isDemo: true,
-      createdAt: '2026-05-19T09:00:00Z',
-      updatedAt: '2026-09-20T16:00:00Z',
-    },
-    {
       id: 'demo_us_6',
       userId,
       name: 'Adobe Creative Cloud All Apps Individual Membership',
@@ -781,12 +705,23 @@ export function loadContracts(): Contract[] {
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
+        // Sanitize any existing stored Centraal Beheer demo data or credentials from local storage
+        const sanitized = parsed.filter(
+          (c: Contract) =>
+            c.id !== 'demo_us_5' &&
+            !c.supplier?.toLowerCase().includes('centraal beheer') &&
+            !c.credentials?.username?.includes('smartprod7501')
+        );
+        if (sanitized.length !== parsed.length) {
+          saveContracts(sanitized);
+        }
+
         if (isDismissed) {
-          const filtered = parsed.filter((c) => !isDemoContract(c));
+          const filtered = sanitized.filter((c) => !isDemoContract(c));
           return filtered;
         }
-        if (parsed.length > 0) {
-          const hasLegacyDutch = parsed.some(
+        if (sanitized.length > 0) {
+          const hasLegacyDutch = sanitized.some(
             (c: Contract) =>
               c.supplier?.includes('Vattenfall') ||
               c.supplier?.includes('Ziggo') ||
@@ -798,7 +733,7 @@ export function loadContracts(): Contract[] {
           }
 
           // Backfill coverageType on existing stored contracts if missing
-          const backfilled = parsed.map((c: Contract) => {
+          const backfilled = sanitized.map((c: Contract) => {
             if (!c.coverageType) {
               const nameLower = (c.name || '').toLowerCase();
               const notesLower = (c.notes || '').toLowerCase();

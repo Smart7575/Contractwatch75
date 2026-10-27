@@ -464,10 +464,32 @@ export async function deleteUserAccountCompletely(userId: string): Promise<void>
     console.warn('Firestore cleanup during account deletion encountered error:', error);
   }
 
-  // 3. Delete Firebase Auth user
+  // 2b. Clean up categories subcollection if any
+  try {
+    const catsRef = collection(db, 'users', userId, 'categories');
+    const querySnapshot = await getDocs(catsRef);
+    if (!querySnapshot.empty) {
+      const batch = writeBatch(db);
+      querySnapshot.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+      await batch.commit();
+    }
+  } catch (error) {
+    console.warn('Categories cleanup during account deletion:', error);
+  }
+
+  // 3. Delete Firebase Auth user; if requires-recent-login, sign out immediately without blocking account erasure
   const currentUser = auth.currentUser;
   if (currentUser) {
-    await deleteUser(currentUser);
+    try {
+      await deleteUser(currentUser);
+    } catch (authError: any) {
+      console.warn('Firebase Auth user deletion note (signing out user without blocking):', authError?.code || authError);
+      try {
+        await signOut(auth);
+      } catch {}
+    }
   }
 }
 

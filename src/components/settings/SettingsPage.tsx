@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import {
@@ -291,6 +291,39 @@ export const SettingsPage: React.FC = () => {
 
   // Profile form state
   const [name, setName] = useState(user.name);
+  const nameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showSavedIndicator = () => {
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2500);
+  };
+
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (nameTimeoutRef.current) clearTimeout(nameTimeoutRef.current);
+    nameTimeoutRef.current = setTimeout(() => {
+      const trimmed = val.trim();
+      if (trimmed && trimmed !== user.name) {
+        updateUserProfile({ name: trimmed });
+        showSavedIndicator();
+      }
+    }, 500);
+  };
+
+  const handleNameBlur = () => {
+    if (nameTimeoutRef.current) clearTimeout(nameTimeoutRef.current);
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== user.name) {
+      updateUserProfile({ name: trimmed });
+      showSavedIndicator();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (nameTimeoutRef.current) clearTimeout(nameTimeoutRef.current);
+    };
+  }, []);
   const [activeCurrency, setActiveCurrency] = useState<string>(() => {
     const raw = user.settings.currency || 'USD';
     return raw.replace('custom:', '').trim() || 'USD';
@@ -423,6 +456,7 @@ export const SettingsPage: React.FC = () => {
     updateUserSettings({
       currency: clean,
     });
+    showSavedIndicator();
     setCurrencyNotice(`Active currency set to ${clean}.`);
     setTimeout(() => setCurrencyNotice(null), 3000);
   };
@@ -528,6 +562,8 @@ export const SettingsPage: React.FC = () => {
   const handleDetectDeviceTimezone = () => {
     const detected = getLocalDeviceTimezone();
     setTimezone(detected);
+    updateUserSettings({ timezone: detected });
+    showSavedIndicator();
   };
 
   // Channels: Only In-App Bell Drawer
@@ -558,6 +594,7 @@ export const SettingsPage: React.FC = () => {
         weeklyDigest: false,
       },
     });
+    showSavedIndicator();
   };
 
   // Import / Export state
@@ -575,12 +612,16 @@ export const SettingsPage: React.FC = () => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const toggleLeadTime = (days: number) => {
+    let nextList: number[];
     if (leadTimes.includes(days)) {
       if (leadTimes.length <= 1) return; // Keep at least 1
-      setLeadTimes(leadTimes.filter((d) => d !== days));
+      nextList = leadTimes.filter((d) => d !== days);
     } else {
-      setLeadTimes([...leadTimes, days].sort((a, b) => b - a));
+      nextList = [...leadTimes, days].sort((a, b) => b - a);
     }
+    setLeadTimes(nextList);
+    updateUserSettings({ defaultReminders: nextList });
+    showSavedIndicator();
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -850,7 +891,7 @@ export const SettingsPage: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xs">
         {/* Profile & Regional Tab */}
         {activeTab === 'profile' && (
-          <form onSubmit={handleSaveProfile} className="space-y-6">
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
                 Personal Profile & Locale
@@ -868,7 +909,8 @@ export const SettingsPage: React.FC = () => {
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onBlur={handleNameBlur}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
                 />
               </div>
@@ -899,7 +941,7 @@ export const SettingsPage: React.FC = () => {
                 <div>
                   <select
                     value={activeCurrency}
-                    onChange={(e) => setActiveCurrency(e.target.value)}
+                    onChange={(e) => handleSelectCurrency(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-medium"
                   >
                     <optgroup label="Standard Presets">
@@ -1227,7 +1269,12 @@ export const SettingsPage: React.FC = () => {
 
                 <select
                   value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTimezone(val);
+                    updateUserSettings({ timezone: val });
+                    showSavedIndicator();
+                  }}
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-sans"
                 >
                   {filteredTimezones ? (
@@ -1378,21 +1425,6 @@ export const SettingsPage: React.FC = () => {
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button
-                  type="submit"
-                  disabled={isSavingProfile}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs inline-flex items-center gap-2"
-                >
-                  {isSavingProfile ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <span>Save Profile</span>
-                  )}
-                </button>
-
-                <button
                   type="button"
                   onClick={handleResetToDefaults}
                   disabled={isSavingProfile}
@@ -1404,12 +1436,19 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </div>
 
-              {savedSuccess && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span>Settings saved successfully!</span>
-                </div>
-              )}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-medium">
+                {savedSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 animate-in zoom-in-75 duration-150" />
+                    <span className="text-emerald-700 dark:text-emerald-300 font-semibold">Saved!</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>All changes saved automatically</span>
+                  </>
+                )}
+              </div>
             </div>
           </form>
         )}
@@ -1970,7 +2009,7 @@ export const SettingsPage: React.FC = () => {
 
         {/* Signal Intervals Tab */}
         {activeTab === 'reminders' && (
-          <form onSubmit={handleSaveProfile} className="space-y-6">
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
                 Notice Period Signal Triggers
@@ -2023,13 +2062,20 @@ export const SettingsPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs"
-              >
-                Save Signal Intervals
-              </button>
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-medium">
+                {savedSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 animate-in zoom-in-75 duration-150" />
+                    <span className="text-emerald-700 dark:text-emerald-300 font-semibold">Saved!</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>All changes saved automatically</span>
+                  </>
+                )}
+              </div>
             </div>
           </form>
         )}
