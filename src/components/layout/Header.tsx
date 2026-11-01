@@ -11,6 +11,7 @@ import {
   X,
   Building2,
   LogIn,
+  LogOut,
 } from 'lucide-react';
 import {
   formatCurrency,
@@ -34,6 +35,7 @@ export const Header: React.FC = () => {
     setCurrentPage,
     isFirebaseAuthenticated,
     setIsAuthModalOpen,
+    logout,
   } = useApp();
 
   const { actualTheme, toggleTheme } = useTheme();
@@ -343,32 +345,45 @@ export const Header: React.FC = () => {
             <span>Sign In</span>
           </button>
         ) : (
-          /* User account / settings button */
-          <button
-            onClick={() =>
-              setCurrentPage(currentPage === 'settings' ? 'dashboard' : 'settings')
-            }
-            className={`flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded-xl transition-all cursor-pointer ${
-              currentPage === 'settings'
-                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/30'
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-            title="Account settings page"
-          >
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-xs font-bold">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-            <span className="text-xs font-semibold max-w-[80px] truncate hidden xl:inline">
-              Settings
-            </span>
-            <Settings
-              className={`w-3.5 h-3.5 hidden sm:block ${
+          <>
+            {/* User account / settings button */}
+            <button
+              onClick={() =>
+                setCurrentPage(currentPage === 'settings' ? 'dashboard' : 'settings')
+              }
+              className={`flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded-xl transition-all cursor-pointer ${
                 currentPage === 'settings'
-                  ? 'text-indigo-600 dark:text-indigo-400 rotate-45 transition-transform'
-                  : 'text-slate-400'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/30'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
-            />
-          </button>
+              title="Account settings"
+              aria-label="Account settings"
+            >
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-xs font-bold">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-xs font-semibold max-w-[80px] truncate hidden xl:inline">
+                Settings
+              </span>
+              <Settings
+                className={`w-3.5 h-3.5 hidden sm:block ${
+                  currentPage === 'settings'
+                    ? 'text-indigo-600 dark:text-indigo-400 rotate-45 transition-transform'
+                    : 'text-slate-400'
+                }`}
+              />
+            </button>
+
+            {/* Logout button */}
+            <button
+              onClick={logout}
+              title={`Log Out (${user.name})`}
+              aria-label="Log Out"
+              className="p-1.5 sm:p-2 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </>
         )}
 
 

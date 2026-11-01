@@ -1,4 +1,4 @@
-import { NoticePeriod, UrgencyLevel } from '../types';
+import { NoticePeriod, UrgencyLevel, AutoExtendPeriod, Contract } from '../types';
 
 /**
  * Returns today's date formatted as YYYY-MM-DD
@@ -46,40 +46,146 @@ export function calculateCancellationDeadline(
 }
 
 /**
+ * Shift a YYYY-MM-DD date string by a specific period (value + unit).
+ * Supports 'days', 'weeks', 'months', 'years'.
+ * Correctly accounts for leap years and different month lengths.
+ */
+export function shiftDateByPeriod(
+  dateStr: string,
+  value: number,
+  unit: 'days' | 'weeks' | 'months' | 'years'
+): string {
+  if (!dateStr || value === 0) return dateStr || '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
+
+  if (unit === 'years') {
+    const nextYear = year + value;
+    let targetDay = day;
+    if (month === 2 && day === 29) {
+      const isNextLeap = (nextYear % 4 === 0 && nextYear % 100 !== 0) || (nextYear % 400 === 0);
+      if (!isNextLeap) targetDay = 28;
+    }
+    const mm = String(month).padStart(2, '0');
+    const dd = String(targetDay).padStart(2, '0');
+    return `${nextYear}-${mm}-${dd}`;
+  }
+
+  if (unit === 'months') {
+    const totalMonths = year * 12 + (month - 1) + value;
+    const nextYear = Math.floor(totalMonths / 12);
+    const nextMonth = (totalMonths % 12) + 1;
+    // Handle days overflow for shorter target months (e.g. Jan 31 + 1 month -> Feb 28)
+    const daysInTargetMonth = new Date(nextYear, nextMonth, 0).getDate();
+    const targetDay = Math.min(day, daysInTargetMonth);
+    const mm = String(nextMonth).padStart(2, '0');
+    const dd = String(targetDay).padStart(2, '0');
+    return `${nextYear}-${mm}-${dd}`;
+  }
+
+  if (unit === 'weeks') {
+    const d = new Date(year, month - 1, day);
+    d.setDate(d.getDate() + value * 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  if (unit === 'days') {
+    const d = new Date(year, month - 1, day);
+    d.setDate(d.getDate() + value);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  return dateStr;
+}
+
+/**
  * Shift a YYYY-MM-DD date string by exactly 1 year.
  * Correctly accounts for leap years (e.g. Feb 29 -> Feb 28 on non-leap years).
  */
 export function shiftDateByOneYear(dateStr?: string): string {
   if (!dateStr) return '';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10);
-    const day = parseInt(parts[2], 10);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-      const nextYear = year + 1;
-      let targetDay = day;
-      if (month === 2 && day === 29) {
-        const isNextLeap = (nextYear % 4 === 0 && nextYear % 100 !== 0) || (nextYear % 400 === 0);
-        if (!isNextLeap) {
-          targetDay = 28;
-        }
-      }
-      const mm = String(month).padStart(2, '0');
-      const dd = String(targetDay).padStart(2, '0');
-      return `${nextYear}-${mm}-${dd}`;
+  return shiftDateByPeriod(dateStr, 1, 'years');
+}
+
+/**
+ * Format AutoExtendPeriod into human friendly display string (e.g. "1 jaar", "1 maand", "3 maanden")
+ */
+export function formatAutoExtendPeriod(period?: AutoExtendPeriod): string {
+  if (!period || !period.value) return '1 year';
+  const val = period.value;
+  if (period.unit === 'years') {
+    return val === 1 ? '1 year' : `${val} years`;
+  }
+  return val === 1 ? '1 month' : `${val} months`;
+}
+
+/**
+ * Determines the contract's renewal duration.
+ * Checks contract.autoExtendPeriod, falls back to parsing renewalPeriod string, then user default.
+ */
+export function getContractAutoExtendPeriod(
+  contract: Partial<Contract>,
+  defaultPeriod?: AutoExtendPeriod
+): AutoExtendPeriod {
+  if (contract.autoExtendPeriod && contract.autoExtendPeriod.value > 0) {
+    return contract.autoExtendPeriod;
+  }
+  if (contract.renewalPeriod) {
+    const lower = contract.renewalPeriod.toLowerCase();
+    if (lower.includes('month') || lower.includes('maand')) {
+      const match = lower.match(/(\d+)\s*(month|maand)/);
+      const val = match ? parseInt(match[1], 10) : 1;
+      return { value: val || 1, unit: 'months' };
+    }
+    if (lower.includes('year') || lower.includes('jaar')) {
+      const match = lower.match(/(\d+)\s*(year|jaar)/);
+      const val = match ? parseInt(match[1], 10) : 1;
+      return { value: val || 1, unit: 'years' };
     }
   }
+  return defaultPeriod || { value: 1, unit: 'years' };
+}
 
-  const d = new Date(dateStr);
-  if (!isNaN(d.getTime())) {
-    d.setFullYear(d.getFullYear() + 1);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-  return dateStr;
+/**
+ * Automatically calculates extended contract dates when deadline passes.
+ * Advances term by the specified autoExtendPeriod until deadline is in the present/future.
+ */
+export function calculateAutoExtendedDates(
+  contract: Contract,
+  overridePeriod?: AutoExtendPeriod
+): {
+  startDate: string;
+  endDate: string;
+  cancellationDeadline: string;
+  periodsAdded: number;
+  periodUsed: AutoExtendPeriod;
+} {
+  const period = overridePeriod || getContractAutoExtendPeriod(contract);
+  let curStart = contract.startDate || getTodayString();
+  let curEnd = contract.endDate || getTodayString();
+  let curDeadline = contract.cancellationDeadline || calculateCancellationDeadline(curEnd, contract.noticePeriod);
+  let periodsAdded = 0;
+
+  // Advance by period at least once, and continue if deadline is still in the past (up to max 12 iterations)
+  do {
+    curStart = curEnd;
+    curEnd = shiftDateByPeriod(curEnd, period.value, period.unit);
+    curDeadline = calculateCancellationDeadline(curEnd, contract.noticePeriod);
+    periodsAdded++;
+  } while (getDaysRemaining(curDeadline) < 0 && periodsAdded < 12);
+
+  return {
+    startDate: curStart,
+    endDate: curEnd,
+    cancellationDeadline: curDeadline,
+    periodsAdded,
+    periodUsed: period,
+  };
 }
 
 /**
@@ -240,4 +346,62 @@ export function formatCurrency(
   const trimmed = currency.trim();
   const prefix = trimmed.endsWith(' ') ? trimmed : `${trimmed} `;
   return `${prefix}${formattedNum}`;
+}
+
+/**
+ * Calculates and formats the contract duration between startDate and endDate.
+ * e.g. "1 year", "2 years", "6 months", "1 year, 3 mo", or "Rolling / Open-ended"
+ */
+export function formatContractDuration(
+  startDate?: string,
+  endDate?: string,
+  isRolling?: boolean
+): string {
+  if (isRolling) return 'Rolling / Open-ended';
+  if (!startDate || !endDate) {
+    if (endDate) return `Until ${formatDate(endDate)}`;
+    if (startDate) return `From ${formatDate(startDate)}`;
+    return '—';
+  }
+
+  const [sY, sM, sD] = startDate.split('-').map(Number);
+  const [eY, eM, eD] = endDate.split('-').map(Number);
+  if (!sY || !eY) return '—';
+
+  const dStart = new Date(Date.UTC(sY, sM - 1, sD));
+  const dEnd = new Date(Date.UTC(eY, eM - 1, eD));
+  const diffMs = dEnd.getTime() - dStart.getTime();
+  if (diffMs < 0) return 'End date is before start date';
+
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return '1 day';
+
+  if (diffDays <= 45) {
+    return `${diffDays} days`;
+  }
+
+  // Calculate year and month difference
+  let totalMonths = (eY - sY) * 12 + (eM - sM);
+  if (eD < sD - 3) {
+    totalMonths -= 1;
+  } else if (eD > sD + 25) {
+    totalMonths += 1;
+  }
+
+  if (totalMonths <= 0) {
+    return `${diffDays} days`;
+  }
+
+  if (totalMonths < 12) {
+    return `${totalMonths} month${totalMonths === 1 ? '' : 's'}`;
+  }
+
+  const years = Math.floor(totalMonths / 12);
+  const remainingMonths = totalMonths % 12;
+
+  if (remainingMonths === 0) {
+    return `${years} year${years === 1 ? '' : 's'}`;
+  }
+
+  return `${years} year${years === 1 ? '' : 's'}, ${remainingMonths} mo`;
 }

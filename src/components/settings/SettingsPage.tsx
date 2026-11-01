@@ -30,6 +30,7 @@ import {
   EyeOff,
   Copy,
   RotateCcw,
+  RotateCw,
   Layers,
   Plus,
   Tag,
@@ -48,7 +49,7 @@ import {
   parseCSVToContracts,
 } from '../../lib/csvHelper';
 import { formatCurrency, getCurrencyLabel } from '../../lib/dateUtils';
-import { Contract, Category } from '../../types';
+import { Contract, Category, AutoExtendPeriod } from '../../types';
 import { firebaseConfig, checkFirebaseConnection, FirebaseConnectionStatus, auth } from '../../lib/firebase';
 import { fetchUserContractsFromFirestore } from '../../lib/firebaseService';
 import { isDemoContract, DEFAULT_USER } from '../../lib/storage';
@@ -569,6 +570,14 @@ export const SettingsPage: React.FC = () => {
   // Channels: Only In-App Bell Drawer
   const [inApp, setInApp] = useState(user.settings.channels?.inApp ?? true);
 
+  // Auto-extend contracts setting
+  const [autoExtendContracts, setAutoExtendContracts] = useState<boolean>(
+    user.settings.autoExtendContracts ?? false
+  );
+  const [defaultAutoExtendPeriod, setDefaultAutoExtendPeriod] = useState<AutoExtendPeriod>(
+    user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' }
+  );
+
   // Reminders / Lead Times
   const [leadTimes, setLeadTimes] = useState<number[]>(
     user.settings.defaultReminders || [90, 60, 30, 14, 7, 1]
@@ -581,8 +590,30 @@ export const SettingsPage: React.FC = () => {
     setActiveCurrency(rawCurr);
     setTimezone(user.settings.timezone);
     setInApp(user.settings.channels?.inApp ?? true);
+    setAutoExtendContracts(user.settings.autoExtendContracts ?? false);
+    setDefaultAutoExtendPeriod(user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' });
     setLeadTimes(user.settings.defaultReminders || [90, 60, 30, 14, 7, 1]);
-  }, [user.name, user.settings.currency, user.settings.timezone, user.settings.channels?.inApp]);
+  }, [
+    user.name,
+    user.settings.currency,
+    user.settings.timezone,
+    user.settings.channels?.inApp,
+    user.settings.autoExtendContracts,
+    user.settings.defaultAutoExtendPeriod,
+  ]);
+
+  const handleToggleAutoExtend = (nextVal: boolean) => {
+    setAutoExtendContracts(nextVal);
+    updateUserSettings({ autoExtendContracts: nextVal });
+    showSavedIndicator();
+  };
+
+  const handleUpdateDefaultAutoExtendPeriod = (val: number, unit: 'months' | 'years') => {
+    const nextPeriod: AutoExtendPeriod = { value: val, unit };
+    setDefaultAutoExtendPeriod(nextPeriod);
+    updateUserSettings({ defaultAutoExtendPeriod: nextPeriod });
+    showSavedIndicator();
+  };
 
   const handleToggleInApp = (nextVal: boolean) => {
     setInApp(nextVal);
@@ -862,6 +893,20 @@ export const SettingsPage: React.FC = () => {
               </p>
             </div>
           </div>
+
+          {isFirebaseAuthenticated && (
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900/60 transition cursor-pointer shadow-2xs"
+                title="Log Out of your account"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Log Out</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Tab Navigation */}
@@ -919,12 +964,25 @@ export const SettingsPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Account Email
                 </label>
-                <input
-                  type="email"
-                  disabled
-                  value={user.email}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50 text-xs text-slate-500 cursor-not-allowed"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    disabled
+                    value={user.email}
+                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50 text-xs text-slate-500 cursor-not-allowed"
+                  />
+                  {isFirebaseAuthenticated && (
+                    <button
+                      type="button"
+                      onClick={logout}
+                      className="px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/60 transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                      title="Log Out"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Log Out</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
@@ -1419,6 +1477,117 @@ export const SettingsPage: React.FC = () => {
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Automatic Contract Extension Setting */}
+            <div className="pt-2">
+              <div className="mb-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Automatic Contract Extension
+                </label>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Automatically extend contracts when the notice deadline has passed without user action (no roll forward or cancellation).
+                </p>
+              </div>
+
+              <div className="max-w-xl space-y-3">
+                <div
+                  onClick={() => handleToggleAutoExtend(!autoExtendContracts)}
+                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer select-none ${
+                    autoExtendContracts
+                      ? 'border-indigo-600/60 bg-indigo-50/40 dark:bg-indigo-950/30 ring-1 ring-indigo-500/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        autoExtendContracts
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      <RotateCw className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <span>Auto-extend when notice deadline passes</span>
+                        {autoExtendContracts ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                            Enabled
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500">
+                            Disabled
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Rolls contract start and end dates forward automatically when the deadline has expired
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Accessible toggle switch */}
+                  <div
+                    role="switch"
+                    aria-checked={autoExtendContracts}
+                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ml-3 shrink-0 ${
+                      autoExtendContracts ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                        autoExtendContracts ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {autoExtendContracts && (
+                  <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-indigo-100 dark:border-indigo-900/60 space-y-2.5 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                        Default Extension Period
+                      </label>
+                      <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
+                        Saved automatically
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Select the default duration to extend contracts by (can be customized per individual contract):
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                      {[
+                        { label: '1 month', value: 1, unit: 'months' as const },
+                        { label: '3 months', value: 3, unit: 'months' as const },
+                        { label: '6 months', value: 6, unit: 'months' as const },
+                        { label: '1 year (Default)', value: 1, unit: 'years' as const },
+                        { label: '2 years', value: 2, unit: 'years' as const },
+                        { label: '3 years', value: 3, unit: 'years' as const },
+                      ].map((preset) => {
+                        const isSelected =
+                          defaultAutoExtendPeriod.value === preset.value &&
+                          defaultAutoExtendPeriod.unit === preset.unit;
+                        return (
+                          <button
+                            key={`${preset.value}_${preset.unit}`}
+                            type="button"
+                            onClick={() => handleUpdateDefaultAutoExtendPeriod(preset.value, preset.unit)}
+                            className={`px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer text-center ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

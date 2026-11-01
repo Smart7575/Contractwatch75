@@ -93,6 +93,8 @@ export const DEFAULT_USER: User = {
     timezone: 'America/New_York',
     language: 'en',
     defaultReminders: [90, 60, 30, 14, 7, 0],
+    autoExtendContracts: false,
+    defaultAutoExtendPeriod: { value: 1, unit: 'years' },
     channels: {
       inApp: true,
       email: false,

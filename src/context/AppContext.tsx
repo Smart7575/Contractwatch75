@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  AutoExtendPeriod,
   Category,
   Contract,
   ContractStatus,
@@ -14,7 +15,10 @@ import {
   ViewMode,
 } from '../types';
 import {
+  calculateAutoExtendedDates,
   calculateCancellationDeadline,
+  formatAutoExtendPeriod,
+  getContractAutoExtendPeriod,
   getDaysRemaining,
   getTodayString,
   getUrgencyLevel,
@@ -103,6 +107,7 @@ interface AppContextType {
   deleteContract: (id: string) => void;
   duplicateContract: (id: string) => void;
   rollForwardContract: (id: string) => Contract | undefined;
+  autoExtendContract: (id: string, overridePeriod?: AutoExtendPeriod) => Contract | undefined;
   markContractStatus: (id: string, status: ContractStatus, followedByContractId?: string) => void;
   snoozeContract: (id: string, days: number) => void;
   toggleFavorite: (id: string) => void;
@@ -727,6 +732,145 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return rolledForward;
   };
+
+  // Auto-extend contract explicitly by its configured period or default period
+  const autoExtendContract = (id: string, overridePeriod?: AutoExtendPeriod): Contract | undefined => {
+    const source = contracts.find((c) => c.id === id);
+    if (!source) return undefined;
+
+    const currentUid = auth.currentUser?.uid;
+    const periodToUse = overridePeriod || source.autoExtendPeriod || user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' };
+    const result = calculateAutoExtendedDates(source, periodToUse);
+    const periodLabel = formatAutoExtendPeriod(result.periodUsed);
+
+    const newPriceHistoryEntry: PriceHistoryEntry = {
+      id: `ph_auto_${Date.now()}`,
+      date: getTodayString(),
+      annualCost: source.annualCost,
+      monthlyCost: source.monthlyCost,
+      note: `Automatically extended by ${periodLabel}`,
+    };
+
+    const updated: Contract = {
+      ...source,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      cancellationDeadline: result.cancellationDeadline,
+      autoExtendEnabled: true,
+      autoExtendPeriod: result.periodUsed,
+      lastAutoExtendedAt: new Date().toISOString(),
+      priceHistory: [newPriceHistoryEntry, ...(source.priceHistory || [])],
+      updatedAt: new Date().toISOString(),
+    };
+
+    setContracts((prev) => prev.map((c) => (c.id === id ? updated : c)));
+
+    if (currentUid) {
+      saveContractToFirestore(currentUid, updated)
+        .then(() => {
+          setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        })
+        .catch(console.error);
+    }
+
+    setUndoToast({
+      id: `undo_autoext_${Date.now()}`,
+      message: `Contract "${source.name}" was automatically extended by ${periodLabel}.`,
+      onUndo: () => {
+        setContracts((prev) => prev.map((c) => (c.id === id ? source : c)));
+        if (currentUid) {
+          saveContractToFirestore(currentUid, source).catch(() => {});
+        }
+        setUndoToast(null);
+      },
+    });
+
+    return updated;
+  };
+
+  // Automated background evaluation for contract auto-extension
+  // When cancellation deadline has passed (0 days remaining & notice window closed)
+  // and no user action (roll forward or cancellation) has occurred, auto-extend if enabled.
+  useEffect(() => {
+    if (!contracts || contracts.length === 0) return;
+
+    const eligible = contracts.filter((c) => {
+      // Must be active and have a definitive end date / cancellation deadline
+      if (c.status !== 'active' || c.isEndDateOpenEnded || !c.cancellationDeadline) return false;
+
+      // Cancellation deadline has passed (no days left, past notice deadline)
+      const days = getDaysRemaining(c.cancellationDeadline);
+      if (days >= 0) return false;
+
+      // Auto-extension is enabled: either explicitly on contract, or globally in user settings
+      const isEnabled =
+        c.autoExtendEnabled === true ||
+        (user.settings.autoExtendContracts === true &&
+          c.autoExtendEnabled !== false &&
+          c.autoRenew !== false);
+
+      return isEnabled;
+    });
+
+    if (eligible.length === 0) return;
+
+    const currentUid = auth.currentUser?.uid;
+    const nowIso = new Date().toISOString();
+    const updatedContracts = contracts.map((c) => {
+      if (!eligible.some((ec) => ec.id === c.id)) return c;
+
+      const period = c.autoExtendPeriod || user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' };
+      const result = calculateAutoExtendedDates(c, period);
+      const periodLabel = formatAutoExtendPeriod(result.periodUsed);
+
+      const newHistoryEntry: PriceHistoryEntry = {
+        id: `ph_auto_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        date: getTodayString(),
+        annualCost: c.annualCost,
+        monthlyCost: c.monthlyCost,
+        note: `Automatically extended by ${periodLabel} (no cancellation notice before deadline)`,
+      };
+
+      const updated: Contract = {
+        ...c,
+        startDate: result.startDate,
+        endDate: result.endDate,
+        cancellationDeadline: result.cancellationDeadline,
+        autoExtendEnabled: true,
+        autoExtendPeriod: result.periodUsed,
+        lastAutoExtendedAt: nowIso,
+        priceHistory: [newHistoryEntry, ...(c.priceHistory || [])],
+        updatedAt: nowIso,
+      };
+
+      if (currentUid) {
+        saveContractToFirestore(currentUid, updated).catch(console.error);
+      }
+
+      return updated;
+    });
+
+    setContracts(updatedContracts);
+    saveContracts(updatedContracts);
+
+    const first = eligible[0];
+    const periodLabel = formatAutoExtendPeriod(first.autoExtendPeriod || user.settings.defaultAutoExtendPeriod);
+    setUndoToast({
+      id: `toast_auto_${Date.now()}`,
+      message:
+        eligible.length === 1
+          ? `Contract "${first.name}" was automatically extended by ${periodLabel}.`
+          : `${eligible.length} contracts were automatically extended according to settings.`,
+      onUndo: () => {
+        setContracts(contracts);
+        saveContracts(contracts);
+        if (currentUid) {
+          eligible.forEach((ec) => saveContractToFirestore(currentUid, ec).catch(() => {}));
+        }
+        setUndoToast(null);
+      },
+    });
+  }, [contracts, user.settings.autoExtendContracts, user.settings.defaultAutoExtendPeriod]);
 
   // Explicit manual or programmatic sync with Firebase
   const syncWithFirebase = async (): Promise<{ success: boolean; count: number; error?: string }> => {
@@ -1454,6 +1598,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteContract,
         duplicateContract,
         rollForwardContract,
+        autoExtendContract,
         markContractStatus,
         snoozeContract,
         toggleFavorite,

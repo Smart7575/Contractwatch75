@@ -4,6 +4,9 @@ import { useApp } from '../../context/AppContext';
 import {
   formatCurrency,
   formatDate,
+  formatAutoExtendPeriod,
+  getContractAutoExtendPeriod,
+  formatContractDuration,
   getDaysRemaining,
   getUrgencyLevel,
   getUrgencyMetadata,
@@ -38,6 +41,7 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
     deleteContract,
     duplicateContract,
     rollForwardContract,
+    autoExtendContract,
     markContractStatus,
     snoozeContract,
     toggleFavorite,
@@ -53,6 +57,16 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
   const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
 
   const category = categories.find((c) => c.id === contract.categoryId);
+
+  const isAutoExtendActive =
+    contract.autoExtendEnabled === true ||
+    (user.settings.autoExtendContracts === true &&
+      contract.autoExtendEnabled !== false &&
+      contract.autoRenew !== false);
+  const autoPeriod =
+    contract.autoExtendPeriod ||
+    user.settings.defaultAutoExtendPeriod ||
+    getContractAutoExtendPeriod(contract);
 
   const UrgencyIcon =
     urgency === 'overdue'
@@ -119,6 +133,18 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
                 </span>
               </>
             )}
+            {isAutoExtendActive && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span
+                  title={`Automatic Extension: ${formatAutoExtendPeriod(autoPeriod)}${contract.lastAutoExtendedAt ? ' (Already auto-extended)' : ''}`}
+                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/60"
+                >
+                  <RotateCw className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Auto: {formatAutoExtendPeriod(autoPeriod)}</span>
+                </span>
+              </>
+            )}
           </div>
 
           {/* Quick 3-dot dropdown menu */}
@@ -166,6 +192,18 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
                   <RotateCw className="w-3.5 h-3.5 text-indigo-500" />
                   <span>Roll Forward (+1 Yr)</span>
                 </button>
+                {isAutoExtendActive && (
+                  <button
+                    onClick={() => {
+                      autoExtendContract(contract.id);
+                      setIsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer font-medium"
+                  >
+                    <RotateCw className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Auto-Extend (+{formatAutoExtendPeriod(autoPeriod)})</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     duplicateContract(contract.id);
@@ -213,6 +251,19 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
           {contract.supplier}
         </p>
+
+        {/* Contract Duration and Start Date */}
+        <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+          <span className="flex items-center gap-1 font-medium">
+            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+            <span>Duration: <strong className="text-slate-800 dark:text-slate-200 font-semibold">{formatContractDuration(contract.startDate, contract.endDate, contract.isEndDateOpenEnded)}</strong></span>
+          </span>
+          {contract.startDate && (
+            <span className="font-mono text-[10px] text-slate-400">
+              Start: {formatDate(contract.startDate)}
+            </span>
+          )}
+        </div>
 
         {/* Urgency Status Bar: Icon + Color + Text (Accessible) */}
         <div className="mt-3.5 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between">

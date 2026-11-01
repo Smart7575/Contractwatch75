@@ -64,6 +64,11 @@ export interface ContractCredentials {
 
 export type CoverageType = 'individual' | 'family';
 
+export interface AutoExtendPeriod {
+  value: number;
+  unit: 'months' | 'years';
+}
+
 export interface Contract {
   id: string;
   userId: string;
@@ -81,6 +86,9 @@ export interface Contract {
   isDeadlineOverridden: boolean;
   autoRenew: boolean;
   renewalPeriod?: string;
+  autoExtendEnabled?: boolean; // Whether contract auto-extends when cancellation deadline passes without action
+  autoExtendPeriod?: AutoExtendPeriod; // Specified extension period (e.g. 1 month, 1 year, 2 years)
+  lastAutoExtendedAt?: string; // ISO timestamp of last auto-extension
   annualCost: number;
   monthlyCost: number;
   paymentFrequency: PaymentFrequency;
@@ -128,6 +136,8 @@ export interface UserSettings {
     weeklyDigest: boolean;
   };
   comparisonSites: Record<string, string>;
+  autoExtendContracts?: boolean; // Global setting: auto-extend active contracts when cancellation deadline has passed
+  defaultAutoExtendPeriod?: AutoExtendPeriod; // Default renewal duration (e.g. 1 year or 1 month)
 }
 
 export interface User {

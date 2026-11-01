@@ -4,6 +4,9 @@ import { Contract, DocumentType, DocumentProvider } from '../../types';
 import {
   formatCurrency,
   formatDate,
+  formatAutoExtendPeriod,
+  getContractAutoExtendPeriod,
+  formatContractDuration,
   getDaysRemaining,
   getUrgencyLevel,
   getUrgencyMetadata,
@@ -57,6 +60,7 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
     deleteContract,
     duplicateContract,
     rollForwardContract,
+    autoExtendContract,
     markContractStatus,
     toggleFavorite,
     addDocumentLink,
@@ -117,6 +121,16 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   const daysRemaining = getDaysRemaining(contract.cancellationDeadline);
   const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
   const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
+
+  const isAutoExtendActive =
+    contract.autoExtendEnabled === true ||
+    (user.settings.autoExtendContracts === true &&
+      contract.autoExtendEnabled !== false &&
+      contract.autoRenew !== false);
+  const autoPeriod =
+    contract.autoExtendPeriod ||
+    user.settings.defaultAutoExtendPeriod ||
+    getContractAutoExtendPeriod(contract);
 
   const potentialSaving =
     contract.alternativeCost && contract.annualCost > contract.alternativeCost
@@ -407,11 +421,14 @@ ${user.name}`;
           {activeTab === 'overview' && (
             <div className="space-y-6">
               {/* Key Timeline Dates Card */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
                   <span className="text-xs text-slate-500">Contract Start</span>
                   <div className="text-base font-bold text-slate-900 dark:text-white mt-1 font-mono tabular-nums">
                     {formatDate(contract.startDate)}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Duration: <strong className="font-semibold text-slate-800 dark:text-slate-200">{formatContractDuration(contract.startDate, contract.endDate, contract.isEndDateOpenEnded)}</strong>
                   </div>
                 </div>
 
@@ -436,34 +453,79 @@ ${user.name}`;
                     {contract.autoRenew ? `Auto-renews: ${contract.renewalPeriod}` : 'Fixed term (no renew)'}
                   </div>
                 </div>
+
+                <div className={`p-4 rounded-2xl border ${
+                  isAutoExtendActive
+                    ? 'bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-900/60'
+                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800'
+                }`}>
+                  <span className={`text-xs font-semibold ${
+                    isAutoExtendActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500'
+                  }`}>
+                    Automatic Extension
+                  </span>
+                  <div className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                    {isAutoExtendActive ? `+ ${formatAutoExtendPeriod(autoPeriod)}` : 'Disabled'}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {contract.lastAutoExtendedAt
+                      ? `Last extended: ${formatDate(contract.lastAutoExtendedAt.split('T')[0])}`
+                      : isAutoExtendActive
+                      ? 'Active at notice deadline'
+                      : 'No auto-extension configured'}
+                  </div>
+                </div>
               </div>
 
-              {/* Roll Forward Next Term Callout Banner */}
+              {/* Roll Forward / Auto-Extension Callout Banner */}
               <div className="p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5">
                     <RotateCw className="w-4 h-4" />
                   </div>
                   <div>
-                    <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                      Roll Contract Forward (+1 Year)
+                    <h5 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Term Renewal & Extension</span>
+                      {isAutoExtendActive && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                          Auto-Extend: {formatAutoExtendPeriod(autoPeriod)}
+                        </span>
+                      )}
                     </h5>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Duplicates this contract with start & expiration dates shifted 1 year forward. All document links will be preserved, and you can immediately adjust the renewal price.
+                      {isAutoExtendActive
+                        ? `This contract automatically extends by ${formatAutoExtendPeriod(autoPeriod)} once the notice deadline has passed. You can also trigger this extension manually now or start a new 1-year roll forward.`
+                        : 'Roll forward into a new contract term (+1 year) while preserving all document attachments, credentials, and supplier details.'}
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    rollForwardContract(contract.id);
-                    onClose();
-                  }}
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shrink-0 shadow-2xs transition cursor-pointer"
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                  <span>Roll Forward Now</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isAutoExtendActive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        autoExtendContract(contract.id);
+                        onClose();
+                      }}
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs transition cursor-pointer"
+                      title={`Auto-extend now by ${formatAutoExtendPeriod(autoPeriod)}`}
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>Auto-Extend (+{formatAutoExtendPeriod(autoPeriod)})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      rollForwardContract(contract.id);
+                      onClose();
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs transition cursor-pointer"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Roll Forward (+1 Yr)</span>
+                  </button>
+                </div>
               </div>
 
               {/* Financial Summary */}
