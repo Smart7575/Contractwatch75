@@ -11,6 +11,7 @@ import {
   getUrgencyLevel,
   getUrgencyMetadata,
   getCurrencyLabel,
+  getEffectiveCancellationDeadline,
 } from '../../lib/dateUtils';
 import {
   X,
@@ -118,8 +119,9 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   if (!contract) return null;
 
   const category = categories.find((c) => c.id === contract.categoryId);
-  const daysRemaining = getDaysRemaining(contract.cancellationDeadline);
-  const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
+  const effectiveDeadline = getEffectiveCancellationDeadline(contract);
+  const daysRemaining = getDaysRemaining(effectiveDeadline);
+  const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
   const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
 
   const isAutoExtendActive =
@@ -200,13 +202,21 @@ Contract: ${contract.name}
 
 Dear Customer Service Team,
 
-I hereby give formal notice to terminate my contract "${contract.name}" with immediate effect at the earliest possible date, which according to the contractual notice period (${contract.noticePeriod.value} ${contract.noticePeriod.unit}) is on or before ${formatDate(contract.cancellationDeadline)}.
+I hereby give formal notice to terminate my contract "${contract.name}" with immediate effect at the earliest possible date, which according to the ${
+  contract.isEndDateOpenEnded
+    ? 'monthly rolling cancellation cycle'
+    : `contractual notice period (${contract.noticePeriod.value} ${contract.noticePeriod.unit})`
+} is on or before ${formatDate(effectiveDeadline)}.
 
 Contract Details:
 - Name: ${contract.name}
 - Supplier: ${contract.supplier}
 - Customer / Contract Reference: ${contract.contractNumber || 'Not specified'}
-- Scheduled End Date: ${formatDate(contract.endDate)}
+${
+  contract.isEndDateOpenEnded
+    ? `- Contract Type: Rolling / Open-ended monthly contract (started on ${formatDate(contract.startDate)})\n- Next Notice Deadline: ${formatDate(effectiveDeadline)}`
+    : `- Scheduled End Date: ${formatDate(contract.endDate)}\n- Notice Deadline: ${formatDate(effectiveDeadline)}`
+}
 
 Please revoke any direct debit (SEPA) authorization or recurring card payment mandate associated with this contract upon the date of termination.
 
@@ -365,7 +375,7 @@ ${user.name}`;
           <div className="flex items-center gap-2 text-xs">
             <Clock className="w-4 h-4" />
             <span>
-              Cancellation Deadline: <strong>{formatDate(contract.cancellationDeadline)}</strong>
+              {contract.isEndDateOpenEnded ? 'Next Notice Deadline' : 'Cancellation Deadline'}: <strong>{formatDate(effectiveDeadline)}</strong>
             </span>
             <span className="hidden sm:inline font-mono">
               ({urgencyMeta.badgeText})
@@ -434,23 +444,29 @@ ${user.name}`;
 
                 <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
                   <span className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">
-                    Notice Deadline
+                    {contract.isEndDateOpenEnded ? 'Next Monthly Notice Deadline' : 'Notice Deadline'}
                   </span>
                   <div className="text-base font-bold text-indigo-700 dark:text-indigo-300 mt-1 font-mono tabular-nums">
-                    {formatDate(contract.cancellationDeadline)}
+                    {formatDate(effectiveDeadline)}
                   </div>
                   <div className="text-[11px] text-indigo-600/70 mt-0.5">
-                    {contract.noticePeriod.value} {contract.noticePeriod.unit} before end date
+                    {contract.isEndDateOpenEnded
+                      ? `Monthly cycle (renews on day ${contract.startDate ? parseInt(contract.startDate.split('-')[2], 10) : '—'} of each month)`
+                      : `${contract.noticePeriod.value} ${contract.noticePeriod.unit} before end date`}
                   </div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
                   <span className="text-xs text-slate-500">Contract End Date</span>
                   <div className="text-base font-bold text-slate-900 dark:text-white mt-1 font-mono tabular-nums">
-                    {formatDate(contract.endDate)}
+                    {contract.isEndDateOpenEnded ? 'None (Open-ended)' : formatDate(contract.endDate)}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    {contract.autoRenew ? `Auto-renews: ${contract.renewalPeriod}` : 'Fixed term (no renew)'}
+                    {contract.isEndDateOpenEnded
+                      ? 'Continuous monthly agreement'
+                      : contract.autoRenew
+                      ? `Auto-renews: ${contract.renewalPeriod}`
+                      : 'Fixed term (no renew)'}
                   </div>
                 </div>
 

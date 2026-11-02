@@ -7,6 +7,7 @@ import {
   getDaysRemaining,
   getUrgencyLevel,
   getUrgencyMetadata,
+  getEffectiveCancellationDeadline,
 } from '../../lib/dateUtils';
 import {
   AlertTriangle,
@@ -76,8 +77,9 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
           {contracts.map((contract) => {
             const category = categories.find((c) => c.id === contract.categoryId);
-            const days = getDaysRemaining(contract.cancellationDeadline);
-            const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
+            const deadline = getEffectiveCancellationDeadline(contract);
+            const days = getDaysRemaining(deadline);
+            const urgency = getUrgencyLevel(deadline, contract.status);
             const urgencyMeta = getUrgencyMetadata(urgency, days);
 
             const UrgencyIcon =
@@ -136,10 +138,14 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
                 {/* Notice Deadline */}
                 <td className="py-3 px-4 font-mono tabular-nums">
                   <div className="font-semibold text-slate-900 dark:text-white">
-                    {formatDate(contract.cancellationDeadline)}
+                    {formatDate(deadline)}
                   </div>
                   <div className="text-[11px] text-slate-500">
-                    End: {formatDate(contract.endDate)}
+                    {contract.isEndDateOpenEnded ? (
+                      <span className="text-indigo-600 dark:text-indigo-400 font-medium">Rolling monthly</span>
+                    ) : (
+                      `End: ${formatDate(contract.endDate)}`
+                    )}
                   </div>
                 </td>
 

@@ -31,7 +31,6 @@ export function calculateCancellationDeadline(
   } else if (noticePeriod.unit === 'months') {
     // Careful with month subtraction to avoid day overflow (e.g., 31 to 30)
     const targetMonth = date.getMonth() - noticePeriod.value;
-    const targetDay = date.getDate();
     date.setMonth(targetMonth);
     // If the month ended up further ahead due to day count difference
     while (date.getMonth() === (targetMonth + 12 + 1) % 12) {
@@ -43,6 +42,83 @@ export function calculateCancellationDeadline(
   const resMonth = String(date.getMonth() + 1).padStart(2, '0');
   const resDay = String(date.getDate()).padStart(2, '0');
   return `${resYear}-${resMonth}-${resDay}`;
+}
+
+/**
+ * Calculates the dynamically actualized notice deadline for a rolling / open-ended contract.
+ * Based on the day-of-month of the starting date.
+ * If start date is e.g. 28th of October 2026, the monthly deadline is the 27th of each month.
+ * If today is on/before 27th of December 2026, returns 2026-12-27.
+ * After 27th of December (28th onwards), actualizes to 2027-01-27.
+ */
+export function calculateRollingNoticeDeadline(
+  startDateStr?: string,
+  todayStr: string = getTodayString()
+): string {
+  const baseStart = startDateStr || todayStr;
+  const [sY, sM, sD] = baseStart.split('-').map(Number);
+  const [tY, tM] = todayStr.split('-').map(Number);
+  if (!sD || !tY || !tM) return todayStr;
+
+  const getDeadlineForMonth = (year: number, month: number): string => {
+    if (sD === 1) {
+      const lastDay = new Date(year, month, 0).getDate();
+      return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    }
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const targetDay = Math.min(sD - 1, daysInMonth);
+    return `${year}-${String(month).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+  };
+
+  // Determine starting candidate year & month (at least today's year & month)
+  let candidateY = tY;
+  let candidateM = tM;
+
+  let deadline = getDeadlineForMonth(candidateY, candidateM);
+
+  // If today has already passed this month's deadline, advance to next month
+  if (todayStr > deadline) {
+    candidateM++;
+    if (candidateM > 12) {
+      candidateM = 1;
+      candidateY++;
+    }
+    deadline = getDeadlineForMonth(candidateY, candidateM);
+  }
+
+  // Ensure deadline is not before the contract starting date
+  while (deadline < baseStart) {
+    candidateM++;
+    if (candidateM > 12) {
+      candidateM = 1;
+      candidateY++;
+    }
+    deadline = getDeadlineForMonth(candidateY, candidateM);
+  }
+
+  return deadline;
+}
+
+/**
+ * Resolves the effective cancellation deadline for a contract.
+ * For rolling / open-ended contracts (isEndDateOpenEnded === true),
+ * it dynamically calculates and actualizes the monthly notice deadline.
+ * For fixed-term contracts, returns cancellationDeadline or computes from endDate.
+ */
+export function getEffectiveCancellationDeadline(
+  contract: Partial<Contract>,
+  todayStr: string = getTodayString()
+): string {
+  if (contract.isEndDateOpenEnded) {
+    return calculateRollingNoticeDeadline(contract.startDate, todayStr);
+  }
+  if (contract.cancellationDeadline) {
+    return contract.cancellationDeadline;
+  }
+  if (contract.endDate && contract.noticePeriod) {
+    return calculateCancellationDeadline(contract.endDate, contract.noticePeriod);
+  }
+  return contract.endDate || '';
 }
 
 /**

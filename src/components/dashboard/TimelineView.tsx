@@ -7,6 +7,7 @@ import {
   getDaysRemaining,
   getUrgencyLevel,
   getUrgencyMetadata,
+  getEffectiveCancellationDeadline,
 } from '../../lib/dateUtils';
 import {
   Calendar,
@@ -25,16 +26,19 @@ interface TimelineViewProps {
 export const TimelineView: React.FC<TimelineViewProps> = ({ contracts }) => {
   const { setSelectedContractId, user, categories } = useApp();
 
-  // Sort chronologically by cancellation deadline
-  const sorted = [...contracts].sort((a, b) =>
-    a.cancellationDeadline.localeCompare(b.cancellationDeadline)
-  );
+  // Sort chronologically by effective cancellation deadline
+  const sorted = [...contracts].sort((a, b) => {
+    const deadA = getEffectiveCancellationDeadline(a);
+    const deadB = getEffectiveCancellationDeadline(b);
+    return deadA.localeCompare(deadB);
+  });
 
   // Group by Year-Month (e.g. "October 2026", "November 2026")
   const groups: { [key: string]: Contract[] } = {};
   for (const c of sorted) {
-    if (!c.cancellationDeadline) continue;
-    const [y, m] = c.cancellationDeadline.split('-');
+    const deadline = getEffectiveCancellationDeadline(c);
+    if (!deadline) continue;
+    const [y, m] = deadline.split('-');
     const monthDate = new Date(Number(y), Number(m) - 1, 1);
     const key = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(
       monthDate
@@ -57,8 +61,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ contracts }) => {
 
           <div className="relative pl-6 border-l-2 border-slate-200 dark:border-slate-800 space-y-3 ml-2">
             {groupContracts.map((contract) => {
-              const days = getDaysRemaining(contract.cancellationDeadline);
-              const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
+              const deadline = getEffectiveCancellationDeadline(contract);
+              const days = getDaysRemaining(deadline);
+              const urgency = getUrgencyLevel(deadline, contract.status);
               const urgencyMeta = getUrgencyMetadata(urgency, days);
               const category = categories.find((c) => c.id === contract.categoryId);
 
@@ -107,7 +112,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ contracts }) => {
                       <span>·</span>
                       <span>Notice: {contract.noticePeriod.value} {contract.noticePeriod.unit}</span>
                       <span>·</span>
-                      <span>Contract ends: {formatDate(contract.endDate)}</span>
+                      <span>
+                        {contract.isEndDateOpenEnded
+                          ? 'Rolling / Open-ended'
+                          : `Contract ends: ${formatDate(contract.endDate)}`}
+                      </span>
                     </div>
                   </div>
 
@@ -115,7 +124,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ contracts }) => {
                   <div className="flex items-center justify-between sm:justify-end gap-3 text-right">
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-white font-mono tabular-nums">
-                        {formatDate(contract.cancellationDeadline)}
+                        {formatDate(deadline)}
                       </div>
                       <div className="flex items-center justify-end gap-1 mt-0.5">
                         <UrgencyIcon className={`w-3 h-3 ${urgencyMeta.textClass}`} />

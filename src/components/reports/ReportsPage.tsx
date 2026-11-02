@@ -7,6 +7,7 @@ import {
   getDaysRemaining,
   getUrgencyLevel,
   getUrgencyMetadata,
+  getEffectiveCancellationDeadline,
 } from '../../lib/dateUtils';
 import { exportContractsToCSV } from '../../lib/csvHelper';
 import { generatePortfolioPDF, exportPDFReport, isAppleTouchDevice } from '../../lib/pdfReportGenerator';
@@ -300,7 +301,8 @@ export const ReportsPage: React.FC = () => {
       if (statusFilter === 'expired' && c.status !== 'expired') return false;
       if (statusFilter === 'urgent') {
         if (c.status !== 'active') return false;
-        const days = getDaysRemaining(c.cancellationDeadline);
+        const deadline = getEffectiveCancellationDeadline(c);
+        const days = getDaysRemaining(deadline);
         if (days < 0 || days > 30) return false;
       }
 
@@ -350,30 +352,30 @@ export const ReportsPage: React.FC = () => {
     .reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
   const urgentContractsCount = totalActiveContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
+    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days >= 0 && days <= 30;
   }).length;
 
   const overdueContractsCount = totalActiveContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
+    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days < 0;
   }).length;
 
   // Cancellation Radar Horizons Breakdown
   const overdueContractsList = totalActiveContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
+    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days < 0;
   });
   const next30ContractsList = totalActiveContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
+    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days >= 0 && days <= 30;
   });
   const days31to90ContractsList = totalActiveContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
+    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days > 30 && days <= 90;
   });
   const laterContractsList = totalActiveContracts.filter((c) => {
-    const days = getDaysRemaining(c.cancellationDeadline);
+    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days > 90;
   });
 
@@ -1088,8 +1090,9 @@ export const ReportsPage: React.FC = () => {
                             {/* Contracts under this subcategory */}
                             <div className="divide-y divide-slate-100 dark:divide-slate-800">
                               {subGroup.contracts.map((contract) => {
-                                const daysRemaining = getDaysRemaining(contract.cancellationDeadline);
-                                const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
+                                const effectiveDeadline = getEffectiveCancellationDeadline(contract);
+                                const daysRemaining = getDaysRemaining(effectiveDeadline);
+                                const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
                                 const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
                                 const hasDocs = contract.documentLinks && contract.documentLinks.length > 0;
 
@@ -1164,7 +1167,7 @@ export const ReportsPage: React.FC = () => {
                                     Notice Deadline
                                   </span>
                                   <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                                    {formatDate(contract.cancellationDeadline)}
+                                    {formatDate(effectiveDeadline)}
                                   </div>
                                   <div className={`text-[11px] font-semibold mt-0.5 ${urgencyMeta.textClass}`}>
                                     {daysRemaining < 0

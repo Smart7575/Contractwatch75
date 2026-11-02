@@ -1,5 +1,5 @@
 import { Contract, NoticeUnit, PaymentFrequency } from '../types';
-import { calculateCancellationDeadline, getTodayString } from './dateUtils';
+import { calculateCancellationDeadline, getTodayString, getEffectiveCancellationDeadline } from './dateUtils';
 
 export interface CSVParseResult {
   valid: Contract[];
@@ -53,10 +53,10 @@ export function exportContractsToCSV(contracts: Contract[]): string {
     `"${(c.supplier || '').replace(/"/g, '""')}"`,
     `"${(c.contractNumber || '').replace(/"/g, '""')}"`,
     `"${c.startDate || ''}"`,
-    `"${c.endDate || ''}"`,
+    `"${c.isEndDateOpenEnded ? '' : (c.endDate || '')}"`,
     c.noticePeriod?.value ?? 1,
     `"${c.noticePeriod?.unit || 'months'}"`,
-    `"${c.cancellationDeadline || ''}"`,
+    `"${getEffectiveCancellationDeadline(c)}"`,
     c.autoRenew ? 'TRUE' : 'FALSE',
     `"${(c.renewalPeriod || '').replace(/"/g, '""')}"`,
     c.annualCost || 0,

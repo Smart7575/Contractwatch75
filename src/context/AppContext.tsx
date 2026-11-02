@@ -17,7 +17,10 @@ import {
 import {
   calculateAutoExtendedDates,
   calculateCancellationDeadline,
+  calculateRollingNoticeDeadline,
+  getEffectiveCancellationDeadline,
   formatAutoExtendPeriod,
+  formatDate,
   getContractAutoExtendPeriod,
   getDaysRemaining,
   getTodayString,
@@ -382,10 +385,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const leadTimes = user.settings.defaultReminders || [90, 60, 30, 14, 7, 0];
 
     for (const contract of contracts) {
-      if (contract.status !== 'active' || !contract.cancellationDeadline) continue;
+      if (contract.status !== 'active') continue;
+      const effectiveDeadline = getEffectiveCancellationDeadline(contract);
+      if (!effectiveDeadline) continue;
 
-      const days = getDaysRemaining(contract.cancellationDeadline);
-      const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
+      const days = getDaysRemaining(effectiveDeadline);
+      const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
 
       // Check if overdue
       if (days < 0) {
@@ -395,10 +400,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           contractId: contract.id,
           contractName: contract.name,
           supplier: contract.supplier,
-          triggerDate: contract.cancellationDeadline,
+          triggerDate: effectiveDeadline,
           daysRemaining: days,
           title: `Deadline passed: ${contract.name}`,
-          message: `The notice deadline was ${Math.abs(days)} day(s) ago (${contract.cancellationDeadline}). Action is required immediately.`,
+          message: `The notice deadline was ${Math.abs(days)} day(s) ago (${formatDate(effectiveDeadline)}). Action is required immediately.`,
           urgency: 'overdue',
           status: 'unread',
           createdAt: new Date().toISOString(),
@@ -426,10 +431,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             contractId: contract.id,
             contractName: contract.name,
             supplier: contract.supplier,
-            triggerDate: contract.cancellationDeadline,
+            triggerDate: effectiveDeadline,
             daysRemaining: days,
             title,
-            message: `Cancellation deadline is ${contract.cancellationDeadline} (${days} day${days === 1 ? '' : 's'} remaining). Annual spend: €${contract.annualCost}.`,
+            message: `Notice deadline is ${formatDate(effectiveDeadline)} (${days} day${days === 1 ? '' : 's'} remaining).`,
             urgency,
             status: 'unread',
             createdAt: new Date().toISOString(),
@@ -472,13 +477,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const currentUid = auth.currentUser?.uid;
     
     // Ensure deadline is calculated if not provided
-    const deadline = data.cancellationDeadline || calculateCancellationDeadline(data.endDate, data.noticePeriod);
+    const deadline =
+      data.cancellationDeadline ||
+      (data.isEndDateOpenEnded
+        ? calculateRollingNoticeDeadline(data.startDate)
+        : calculateCancellationDeadline(data.endDate, data.noticePeriod));
 
     const newContract: Contract = {
       ...data,
       id,
       userId: currentUid || user.id,
       isDemo: false,
+      endDate: data.isEndDateOpenEnded ? '' : (data.endDate || getTodayString()),
       cancellationDeadline: deadline,
       documentLinks: data.documentLinks || [],
       tags: data.tags || [],
@@ -543,15 +553,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedAt: new Date().toISOString(),
         };
         
-        // Recalculate deadline if endDate or noticePeriod changed and not manually overridden
-        if (
-          (updates.endDate !== undefined || updates.noticePeriod !== undefined) &&
-          !merged.isDeadlineOverridden
-        ) {
-          merged.cancellationDeadline = calculateCancellationDeadline(
-            merged.endDate,
-            merged.noticePeriod
-          );
+        // Recalculate deadline if dates, open-ended status, or noticePeriod changed and not manually overridden
+        if (!merged.isDeadlineOverridden) {
+          if (merged.isEndDateOpenEnded) {
+            merged.cancellationDeadline = calculateRollingNoticeDeadline(merged.startDate);
+            merged.endDate = '';
+          } else if (
+            updates.endDate !== undefined ||
+            updates.noticePeriod !== undefined ||
+            updates.isEndDateOpenEnded !== undefined
+          ) {
+            merged.cancellationDeadline = calculateCancellationDeadline(
+              merged.endDate,
+              merged.noticePeriod
+            );
+          }
         }
         updatedContract = merged;
         return merged;

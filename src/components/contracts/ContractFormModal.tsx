@@ -13,6 +13,8 @@ import {
 } from '../../types';
 import {
   calculateCancellationDeadline,
+  calculateRollingNoticeDeadline,
+  getEffectiveCancellationDeadline,
   getTodayString,
   formatDate,
   getCurrencyLabel,
@@ -127,12 +129,18 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       setSupplier(initialContract.supplier);
       setStartDate(initialContract.startDate || getTodayString());
       setIsEndDateOpenEnded(initialContract.isEndDateOpenEnded);
-      setEndDate(initialContract.endDate || '');
+      setEndDate(initialContract.isEndDateOpenEnded ? '' : (initialContract.endDate || ''));
       setNoticeValue(initialContract.noticePeriod.value);
       setNoticeUnit(initialContract.noticePeriod.unit);
       setAnnualCost(initialContract.annualCost);
       setMonthlyCost(initialContract.monthlyCost);
-      setCancellationDeadline(initialContract.cancellationDeadline);
+      setCancellationDeadline(
+        initialContract.isDeadlineOverridden && initialContract.cancellationDeadline
+          ? initialContract.cancellationDeadline
+          : initialContract.isEndDateOpenEnded
+          ? calculateRollingNoticeDeadline(initialContract.startDate || getTodayString())
+          : initialContract.cancellationDeadline
+      );
       setIsDeadlineOverridden(initialContract.isDeadlineOverridden);
       setContractNumber(initialContract.contractNumber || '');
       setAutoRenew(initialContract.autoRenew);
@@ -216,16 +224,21 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
     setErrors({});
   }, [isOpen, initialContract, categories]);
 
-  // Recalculate deadline automatically when endDate or notice changes (unless manually overridden)
+  // Recalculate deadline automatically when startDate, isEndDateOpenEnded, endDate or notice changes (unless manually overridden)
   useEffect(() => {
-    if (!isDeadlineOverridden && endDate && noticeValue) {
-      const calculated = calculateCancellationDeadline(endDate, {
-        value: noticeValue,
-        unit: noticeUnit,
-      });
-      setCancellationDeadline(calculated);
+    if (!isDeadlineOverridden) {
+      if (isEndDateOpenEnded) {
+        const calculated = calculateRollingNoticeDeadline(startDate);
+        setCancellationDeadline(calculated);
+      } else if (endDate && noticeValue) {
+        const calculated = calculateCancellationDeadline(endDate, {
+          value: noticeValue,
+          unit: noticeUnit,
+        });
+        setCancellationDeadline(calculated);
+      }
     }
-  }, [endDate, noticeValue, noticeUnit, isDeadlineOverridden]);
+  }, [startDate, isEndDateOpenEnded, endDate, noticeValue, noticeUnit, isDeadlineOverridden]);
 
   // Handle category change -> update subcategory options
   const handleCategoryChange = (newCatId: string) => {
@@ -341,11 +354,13 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       contractNumber: contractNumber.trim() || undefined,
       startDate: startDate || getTodayString(),
       isEndDateOpenEnded,
-      endDate: endDate || getTodayString(),
+      endDate: isEndDateOpenEnded ? '' : (endDate || getTodayString()),
       noticePeriod: { value: Number(noticeValue), unit: noticeUnit },
       cancellationDeadline:
         cancellationDeadline ||
-        calculateCancellationDeadline(endDate, { value: noticeValue, unit: noticeUnit }),
+        (isEndDateOpenEnded
+          ? calculateRollingNoticeDeadline(startDate)
+          : calculateCancellationDeadline(endDate, { value: noticeValue, unit: noticeUnit })),
       isDeadlineOverridden,
       autoRenew,
       renewalPeriod: renewalPeriod.trim() || '1 month rolling',
@@ -725,26 +740,46 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      End Date <span className="text-rose-500">*</span>
+                      End Date {!isEndDateOpenEnded && <span className="text-rose-500">*</span>}
                     </label>
-                    <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 font-medium cursor-pointer">
                       <input
                         type="checkbox"
                         checked={isEndDateOpenEnded}
-                        onChange={(e) => setIsEndDateOpenEnded(e.target.checked)}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setIsEndDateOpenEnded(checked);
+                          if (checked) {
+                            setEndDate('');
+                          } else if (!endDate) {
+                            const oneYear = new Date();
+                            oneYear.setFullYear(oneYear.getFullYear() + 1);
+                            setEndDate(oneYear.toISOString().split('T')[0]);
+                          }
+                        }}
                         className="rounded text-indigo-600 focus:ring-0"
                       />
                       <span>Rolling / Open-ended</span>
                     </label>
                   </div>
-                  <input
-                    type="date"
-                    required={!isEndDateOpenEnded}
-                    disabled={isEndDateOpenEnded}
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums disabled:opacity-50"
-                  />
+                  {isEndDateOpenEnded ? (
+                    <div className="w-full px-3 py-2 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 text-xs font-medium flex items-center justify-between min-h-[38px]">
+                      <span>None (Rolling / Open-ended contract)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/60 font-semibold text-indigo-800 dark:text-indigo-200">
+                        Monthly Rolling
+                      </span>
+                    </div>
+                  ) : (
+                    <input
+                      type="date"
+                      required
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums ${
+                        errors.endDate ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                    />
+                  )}
                   {errors.endDate && <p className="text-[11px] text-rose-500 mt-1">{errors.endDate}</p>}
                 </div>
               </div>
@@ -833,7 +868,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 dark:text-indigo-200">
                     <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                    <span>Calculated Notice Deadline</span>
+                    <span>{isEndDateOpenEnded ? 'Next Monthly Notice Deadline' : 'Calculated Notice Deadline'}</span>
                   </div>
                   <button
                     type="button"
@@ -857,7 +892,13 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                       {formatDate(cancellationDeadline)}
                     </span>
                     <span className="text-[11px] text-indigo-600/80 dark:text-indigo-400/80">
-                      (End date − {noticeValue} {noticeUnit})
+                      {isEndDateOpenEnded ? (
+                        <>
+                          (Monthly cycle, renews on day {startDate ? parseInt(startDate.split('-')[2], 10) : '—'} of each month)
+                        </>
+                      ) : (
+                        `(End date − ${noticeValue} ${noticeUnit})`
+                      )}
                     </span>
                   </div>
                 )}

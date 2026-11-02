@@ -1,5 +1,5 @@
 import { Contract, Category, User } from '../types';
-import { formatCurrency, formatDate, getDaysRemaining } from './dateUtils';
+import { formatCurrency, formatDate, getDaysRemaining, getEffectiveCancellationDeadline } from './dateUtils';
 
 export function generatePrintableHTML(
   contracts: Contract[],
@@ -32,7 +32,8 @@ export function generatePrintableHTML(
 
       const contractsRows = catContracts
         .map((c) => {
-          const days = getDaysRemaining(c.cancellationDeadline);
+          const deadline = getEffectiveCancellationDeadline(c);
+          const days = getDaysRemaining(deadline);
           const docsHtml =
             c.documentLinks && c.documentLinks.length > 0
               ? c.documentLinks
@@ -91,7 +92,7 @@ export function generatePrintableHTML(
               <div class="contract-meta-grid">
                 <div>
                   <span class="label">Cancellation Deadline:</span>
-                  <strong class="value ${urgencyClass}">${formatDate(c.cancellationDeadline)} (${urgencyLabel})</strong>
+                  <strong class="value ${urgencyClass}">${formatDate(deadline)} (${urgencyLabel})</strong>
                 </div>
                 <div>
                   <span class="label">Term:</span>

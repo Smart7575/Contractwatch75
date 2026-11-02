@@ -4,7 +4,7 @@ import { ContractCard } from '../contracts/ContractCard';
 import { TableView } from './TableView';
 import { TimelineView } from './TimelineView';
 import { RadarKanban } from './RadarKanban';
-import { getDaysRemaining, getUrgencyLevel } from '../../lib/dateUtils';
+import { getDaysRemaining, getUrgencyLevel, getEffectiveCancellationDeadline } from '../../lib/dateUtils';
 import {
   Search,
   LayoutGrid,
@@ -145,7 +145,8 @@ export const CancellationRadar: React.FC = () => {
 
       // Urgency filter
       if (filters.urgency !== 'all') {
-        const urgency = getUrgencyLevel(c.cancellationDeadline, c.status);
+        const deadline = getEffectiveCancellationDeadline(c);
+        const urgency = getUrgencyLevel(deadline, c.status);
         if (filters.urgency === 'needs_action') {
           if (urgency !== 'overdue' && urgency !== 'next_30') return false;
         } else if (urgency !== filters.urgency) {
@@ -182,7 +183,9 @@ export const CancellationRadar: React.FC = () => {
     }).sort((a, b) => {
       let comparison = 0;
       if (filters.sortBy === 'deadline') {
-        comparison = (a.cancellationDeadline || '').localeCompare(b.cancellationDeadline || '');
+        const deadA = getEffectiveCancellationDeadline(a);
+        const deadB = getEffectiveCancellationDeadline(b);
+        comparison = (deadA || '').localeCompare(deadB || '');
       } else if (filters.sortBy === 'annualCost') {
         comparison = (a.annualCost || 0) - (b.annualCost || 0);
       } else if (filters.sortBy === 'name') {
@@ -197,7 +200,8 @@ export const CancellationRadar: React.FC = () => {
   // Urgent count for banner (strictly active with cancellation deadline within 30 days, not overdue)
   const urgentCount = contracts.filter((c) => {
     if (c.status !== 'active') return false;
-    const days = getDaysRemaining(c.cancellationDeadline);
+    const deadline = getEffectiveCancellationDeadline(c);
+    const days = getDaysRemaining(deadline);
     return days >= 0 && days <= 30;
   }).length;
 

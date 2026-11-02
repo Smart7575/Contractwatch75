@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { Contract, Category, User } from '../types';
-import { formatCurrency, formatDate, getDaysRemaining } from './dateUtils';
+import { formatCurrency, formatDate, getDaysRemaining, getEffectiveCancellationDeadline } from './dateUtils';
 
 export function isAppleTouchDevice(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -288,7 +288,8 @@ export function createPortfolioPDFDoc(
       drawRadarTableHeader();
     }
 
-    const days = getDaysRemaining(contract.cancellationDeadline);
+    const deadline = getEffectiveCancellationDeadline(contract);
+    const days = getDaysRemaining(deadline);
     const category = categories.find((c) => c.id === contract.categoryId);
     const isOverdue = days < 0;
     const isUrgent = days >= 0 && days <= 30;
@@ -360,7 +361,7 @@ export function createPortfolioPDFDoc(
     } else {
       doc.setTextColor(15, 23, 42);
     }
-    doc.text(formatDate(contract.cancellationDeadline), margin + 112, y + 3.6);
+    doc.text(formatDate(deadline), margin + 112, y + 3.6);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.2);
@@ -689,7 +690,8 @@ export function createPortfolioPDFDoc(
 
       // Iterate contracts in this subcategory
       subContracts.forEach((contract) => {
-        const days = getDaysRemaining(contract.cancellationDeadline);
+        const deadline = getEffectiveCancellationDeadline(contract);
+        const days = getDaysRemaining(deadline);
         const docs = contract.documentLinks || [];
         const hasDocs = docs.length > 0;
         const prefix = `Attached Documents (${docs.length}): `;
@@ -858,7 +860,7 @@ export function createPortfolioPDFDoc(
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(15, 23, 42);
-        doc.text(formatDate(contract.cancellationDeadline), margin + 9, gridY + 6.7);
+        doc.text(formatDate(deadline), margin + 9, gridY + 6.7);
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);

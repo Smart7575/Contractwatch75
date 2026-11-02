@@ -10,6 +10,7 @@ import {
   getDaysRemaining,
   getUrgencyLevel,
   getUrgencyMetadata,
+  getEffectiveCancellationDeadline,
 } from '../../lib/dateUtils';
 import {
   AlertTriangle,
@@ -52,8 +53,9 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSnoozeOpen, setIsSnoozeOpen] = useState(false);
 
-  const daysRemaining = getDaysRemaining(contract.cancellationDeadline);
-  const urgency = getUrgencyLevel(contract.cancellationDeadline, contract.status);
+  const effectiveDeadline = getEffectiveCancellationDeadline(contract);
+  const daysRemaining = getDaysRemaining(effectiveDeadline);
+  const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
   const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
 
   const category = categories.find((c) => c.id === contract.categoryId);
@@ -271,10 +273,10 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
             <UrgencyIcon className={`w-4 h-4 shrink-0 ${urgencyMeta.textClass}`} />
             <div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
-                Cancellation Deadline
+                {contract.isEndDateOpenEnded ? 'Next Notice Deadline' : 'Cancellation Deadline'}
               </div>
               <div className="text-xs font-semibold text-slate-900 dark:text-white font-mono tabular-nums">
-                {formatDate(contract.cancellationDeadline)}
+                {formatDate(effectiveDeadline)}
               </div>
             </div>
           </div>

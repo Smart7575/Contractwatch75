@@ -1,7 +1,7 @@
 import React from 'react';
 import { Contract, UrgencyLevel } from '../../types';
 import { ContractCard } from '../contracts/ContractCard';
-import { getDaysRemaining, getUrgencyLevel } from '../../lib/dateUtils';
+import { getDaysRemaining, getUrgencyLevel, getEffectiveCancellationDeadline } from '../../lib/dateUtils';
 import { AlertTriangle, Clock, CalendarDays, CheckCircle2 } from 'lucide-react';
 
 interface RadarKanbanProps {
@@ -27,7 +27,7 @@ export const RadarKanban: React.FC<RadarKanbanProps> = ({ contracts }) => {
       icon: AlertTriangle,
       colorClasses: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40',
       borderClasses: 'border-rose-200 dark:border-rose-900',
-      contracts: activeContracts.filter((c) => getUrgencyLevel(c.cancellationDeadline, c.status) === 'overdue'),
+      contracts: activeContracts.filter((c) => getUrgencyLevel(getEffectiveCancellationDeadline(c), c.status) === 'overdue'),
     },
     {
       id: 'next_30',
@@ -36,7 +36,7 @@ export const RadarKanban: React.FC<RadarKanbanProps> = ({ contracts }) => {
       icon: Clock,
       colorClasses: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40',
       borderClasses: 'border-amber-200 dark:border-amber-900',
-      contracts: activeContracts.filter((c) => getUrgencyLevel(c.cancellationDeadline, c.status) === 'next_30'),
+      contracts: activeContracts.filter((c) => getUrgencyLevel(getEffectiveCancellationDeadline(c), c.status) === 'next_30'),
     },
     {
       id: '31_90',
@@ -45,7 +45,7 @@ export const RadarKanban: React.FC<RadarKanbanProps> = ({ contracts }) => {
       icon: CalendarDays,
       colorClasses: 'text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/40',
       borderClasses: 'border-yellow-200 dark:border-yellow-900',
-      contracts: activeContracts.filter((c) => getUrgencyLevel(c.cancellationDeadline, c.status) === '31_90'),
+      contracts: activeContracts.filter((c) => getUrgencyLevel(getEffectiveCancellationDeadline(c), c.status) === '31_90'),
     },
     {
       id: 'later',
@@ -54,7 +54,7 @@ export const RadarKanban: React.FC<RadarKanbanProps> = ({ contracts }) => {
       icon: CheckCircle2,
       colorClasses: 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40',
       borderClasses: 'border-emerald-200 dark:border-emerald-900',
-      contracts: activeContracts.filter((c) => getUrgencyLevel(c.cancellationDeadline, c.status) === 'later'),
+      contracts: activeContracts.filter((c) => getUrgencyLevel(getEffectiveCancellationDeadline(c), c.status) === 'later'),
     },
   ];
 
