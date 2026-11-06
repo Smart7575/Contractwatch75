@@ -57,6 +57,7 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   onClose,
 }) => {
   const {
+    setSelectedContractId,
     setEditingContract,
     deleteContract,
     duplicateContract,
@@ -122,7 +123,7 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   const effectiveDeadline = getEffectiveCancellationDeadline(contract);
   const daysRemaining = getDaysRemaining(effectiveDeadline);
   const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
-  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
+  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status);
 
   const isAutoExtendActive =
     contract.autoExtendEnabled === true ||
@@ -391,7 +392,13 @@ ${user.name}`;
                 Mark as Cancelled
               </button>
             ) : (
-              <span className="text-xs uppercase font-bold px-2 py-0.5 rounded-sm bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+              <span
+                className={`text-xs uppercase font-bold px-2 py-0.5 rounded-sm ${
+                  contract.status === 'expired'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
                 {contract.status}
               </span>
             )}
@@ -430,6 +437,24 @@ ${user.name}`;
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              {contract.followedByContractId && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex items-center justify-between text-xs text-amber-950 dark:text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <RotateCw className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>This contract has been rolled forward to a new term.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedContractId(contract.followedByContractId!);
+                    }}
+                    className="font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer ml-3 shrink-0"
+                  >
+                    View Successor Contract →
+                  </button>
+                </div>
+              )}
+
               {/* Key Timeline Dates Card */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">

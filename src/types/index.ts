@@ -89,6 +89,7 @@ export interface Contract {
   autoExtendEnabled?: boolean; // Whether contract auto-extends when cancellation deadline passes without action
   autoExtendPeriod?: AutoExtendPeriod; // Specified extension period (e.g. 1 month, 1 year, 2 years)
   lastAutoExtendedAt?: string; // ISO timestamp of last auto-extension
+  manuallyRolledForwardAt?: string; // ISO timestamp when manually rolled forward
   annualCost: number;
   monthlyCost: number;
   paymentFrequency: PaymentFrequency;

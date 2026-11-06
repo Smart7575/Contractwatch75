@@ -177,6 +177,8 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
                     className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm ${
                       contract.status === 'active'
                         ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
+                        : contract.status === 'expired'
+                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80'
                         : contract.status === 'cancelled'
                         ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                         : 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-400'

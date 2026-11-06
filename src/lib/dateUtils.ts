@@ -300,7 +300,30 @@ export function getUrgencyLevel(
 /**
  * Human readable urgency display info
  */
-export function getUrgencyMetadata(urgency: UrgencyLevel, daysRemaining: number) {
+export function getUrgencyMetadata(urgency: UrgencyLevel, daysRemaining: number, status?: string) {
+  if (status === 'expired') {
+    return {
+      label: 'Expired',
+      badgeText: 'Contract Expired',
+      colorClass: 'text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-900',
+      textClass: 'text-amber-700 dark:text-amber-400',
+      borderClass: 'border-l-amber-500',
+      bgSubtle: 'bg-amber-500/10',
+      priority: 5,
+    };
+  }
+  if (status === 'cancelled') {
+    return {
+      label: 'Cancelled',
+      badgeText: 'Cancelled',
+      colorClass: 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700',
+      textClass: 'text-slate-500 dark:text-slate-400',
+      borderClass: 'border-l-slate-400',
+      bgSubtle: 'bg-slate-500/10',
+      priority: 6,
+    };
+  }
+
   switch (urgency) {
     case 'overdue':
       return {

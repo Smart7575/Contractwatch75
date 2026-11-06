@@ -26,6 +26,7 @@ import {
   getTodayString,
   getUrgencyLevel,
   shiftDateByOneYear,
+  shiftDateByPeriod,
 } from '../lib/dateUtils';
 import {
   DEFAULT_CATEGORIES,
@@ -647,24 +648,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Roll forward contract (+1 year term)
+  // Roll forward contract (advances term by configured extension period or +1 year default)
   const rollForwardContract = (id: string): Contract | undefined => {
     const source = contracts.find((c) => c.id === id);
     if (!source) return undefined;
 
     const currentUid = auth.currentUser?.uid;
     const newContractId = `cw_rolled_${Date.now()}`;
+    const todayStr = getTodayString();
+    const nowIso = new Date().toISOString();
 
-    // Shift start and end dates by 1 year
-    const sourceStart = source.startDate || getTodayString();
-    const newStartDate = shiftDateByOneYear(sourceStart);
+    const periodToUse = source.autoExtendPeriod || user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' };
+    const periodLabel = formatAutoExtendPeriod(periodToUse);
 
-    // If source has an end date, shift it by 1 year; otherwise default to 1 year after the new start date
+    // Shift start and end dates based on configured autoExtendPeriod
+    const sourceStart = source.startDate || todayStr;
+    const newStartDate = source.endDate && !source.isEndDateOpenEnded
+      ? source.endDate
+      : shiftDateByPeriod(sourceStart, periodToUse.value, periodToUse.unit);
+
     let newEndDate = '';
     if (source.endDate && !source.isEndDateOpenEnded) {
-      newEndDate = shiftDateByOneYear(source.endDate);
+      newEndDate = shiftDateByPeriod(source.endDate, periodToUse.value, periodToUse.unit);
     } else {
-      newEndDate = shiftDateByOneYear(newStartDate);
+      newEndDate = shiftDateByPeriod(newStartDate, periodToUse.value, periodToUse.unit);
     }
 
     // Recalculate cancellation deadline based on notice period
@@ -675,7 +682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...doc,
       id: `doc_${Date.now()}_${idx}`,
       contractId: newContractId,
-      addedAt: new Date().toISOString(),
+      addedAt: nowIso,
     }));
 
     const rolledForward: Contract = {
@@ -699,7 +706,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : [
               {
                 id: `ph_${Date.now()}_prev`,
-                date: source.startDate || getTodayString(),
+                date: source.startDate || todayStr,
                 annualCost: source.annualCost,
                 monthlyCost: source.monthlyCost,
                 note: 'Previous contract baseline rate',
@@ -716,11 +723,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })(),
       isFavorite: false,
       snoozedUntil: undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
 
-    setContracts((prev) => [rolledForward, ...prev]);
+    // If cancellation deadline is overdue or end date is already in the past:
+    // the old contract gets status 'expired' immediately.
+    // If rolled forward before cancellation deadline, the old contract remains 'active' until its end date is in the past.
+    const daysToCancellation = getDaysRemaining(source.cancellationDeadline);
+    const isOverdue = daysToCancellation < 0;
+    const isPastEndDate = Boolean(source.endDate && source.endDate < todayStr);
+
+    const shouldExpireOldImmediately = isOverdue || isPastEndDate;
+
+    const updatedSource: Contract = {
+      ...source,
+      status: shouldExpireOldImmediately ? 'expired' : source.status,
+      followedByContractId: newContractId,
+      manuallyRolledForwardAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    const nextContracts = [
+      rolledForward,
+      ...contracts.map((c) => (c.id === id ? updatedSource : c)),
+    ];
+    setContracts(nextContracts);
+    saveContracts(nextContracts);
 
     if (currentUid) {
       saveContractToFirestore(currentUid, rolledForward)
@@ -728,6 +757,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
         })
         .catch(() => {});
+      saveContractToFirestore(currentUid, updatedSource).catch(() => {});
     }
 
     // Immediately open for editing so the user can adjust the price or any details
@@ -736,11 +766,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setUndoToast({
       id: `undo_rf_${Date.now()}`,
-      message: `Rolled forward "${source.name}" (+1 year). You can adjust the price now.`,
+      message: shouldExpireOldImmediately
+        ? `Rolled forward "${source.name}" (+${periodLabel}). Previous contract marked as expired.`
+        : `Rolled forward "${source.name}" (+${periodLabel}). Previous contract will expire after ${formatDate(source.endDate)}.`,
       onUndo: () => {
-        setContracts((prev) => prev.filter((c) => c.id !== newContractId));
+        const reverted = contracts
+          .map((c) => (c.id === id ? source : c))
+          .filter((c) => c.id !== newContractId);
+        setContracts(reverted);
+        saveContracts(reverted);
         if (currentUid) {
           deleteContractFromFirestore(currentUid, newContractId).catch(() => {});
+          saveContractToFirestore(currentUid, source).catch(() => {});
         }
         setUndoToast(null);
       },
@@ -755,137 +792,242 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!source) return undefined;
 
     const currentUid = auth.currentUser?.uid;
+    const newContractId = `cw_rolled_${Date.now()}`;
+    const todayStr = getTodayString();
+    const nowIso = new Date().toISOString();
+
     const periodToUse = overridePeriod || source.autoExtendPeriod || user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' };
+    const periodLabel = formatAutoExtendPeriod(periodToUse);
     const result = calculateAutoExtendedDates(source, periodToUse);
-    const periodLabel = formatAutoExtendPeriod(result.periodUsed);
+
+    const clonedDocumentLinks: DocumentLink[] = (source.documentLinks || []).map((doc, idx) => ({
+      ...doc,
+      id: `doc_${Date.now()}_${idx}`,
+      contractId: newContractId,
+      addedAt: nowIso,
+    }));
 
     const newPriceHistoryEntry: PriceHistoryEntry = {
       id: `ph_auto_${Date.now()}`,
-      date: getTodayString(),
+      date: todayStr,
       annualCost: source.annualCost,
       monthlyCost: source.monthlyCost,
-      note: `Automatically extended by ${periodLabel}`,
+      note: `Rolled forward by ${periodLabel}`,
     };
 
-    const updated: Contract = {
+    const rolledForward: Contract = {
       ...source,
+      id: newContractId,
+      userId: currentUid || source.userId || user.id,
       startDate: result.startDate,
       endDate: result.endDate,
       cancellationDeadline: result.cancellationDeadline,
-      autoExtendEnabled: true,
-      autoExtendPeriod: result.periodUsed,
-      lastAutoExtendedAt: new Date().toISOString(),
+      isEndDateOpenEnded: false,
+      isDeadlineOverridden: false,
+      status: 'active',
+      documentLinks: clonedDocumentLinks,
       priceHistory: [newPriceHistoryEntry, ...(source.priceHistory || [])],
-      updatedAt: new Date().toISOString(),
+      lastAutoExtendedAt: nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
 
-    setContracts((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    const daysToCancellation = getDaysRemaining(source.cancellationDeadline);
+    const isOverdue = daysToCancellation < 0;
+    const isPastEndDate = Boolean(source.endDate && source.endDate < todayStr);
+    const shouldExpireOldImmediately = isOverdue || isPastEndDate;
+
+    const updatedSource: Contract = {
+      ...source,
+      status: shouldExpireOldImmediately ? 'expired' : source.status,
+      followedByContractId: newContractId,
+      manuallyRolledForwardAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    const nextContracts = [
+      rolledForward,
+      ...contracts.map((c) => (c.id === id ? updatedSource : c)),
+    ];
+    setContracts(nextContracts);
+    saveContracts(nextContracts);
 
     if (currentUid) {
-      saveContractToFirestore(currentUid, updated)
+      saveContractToFirestore(currentUid, rolledForward)
         .then(() => {
           setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
         })
         .catch(console.error);
+      saveContractToFirestore(currentUid, updatedSource).catch(console.error);
     }
 
     setUndoToast({
       id: `undo_autoext_${Date.now()}`,
-      message: `Contract "${source.name}" was automatically extended by ${periodLabel}.`,
+      message: shouldExpireOldImmediately
+        ? `Contract "${source.name}" rolled forward by ${periodLabel}. Previous contract marked as expired.`
+        : `Contract "${source.name}" rolled forward by ${periodLabel}. Previous contract will expire after ${formatDate(source.endDate)}.`,
       onUndo: () => {
-        setContracts((prev) => prev.map((c) => (c.id === id ? source : c)));
+        const reverted = contracts
+          .map((c) => (c.id === id ? source : c))
+          .filter((c) => c.id !== newContractId);
+        setContracts(reverted);
+        saveContracts(reverted);
         if (currentUid) {
+          deleteContractFromFirestore(currentUid, newContractId).catch(() => {});
           saveContractToFirestore(currentUid, source).catch(() => {});
         }
         setUndoToast(null);
       },
     });
 
-    return updated;
+    return rolledForward;
   };
 
-  // Automated background evaluation for contract auto-extension
-  // When cancellation deadline has passed (0 days remaining & notice window closed)
-  // and no user action (roll forward or cancellation) has occurred, auto-extend if enabled.
+  // Automated background evaluation for contract auto-extension & status expiration:
+  // 1. Overdue cancellation deadline: automatically roll forward into a new active contract,
+  //    and mark the old contract as 'expired'.
+  // 2. Rolled-forward contracts: when a contract was manually rolled forward before cancellation deadline,
+  //    mark the old contract as 'expired' once its end date is in the past (earlier than today).
   useEffect(() => {
     if (!contracts || contracts.length === 0) return;
 
-    const eligible = contracts.filter((c) => {
+    const todayStr = getTodayString();
+    const nowIso = new Date().toISOString();
+    const currentUid = auth.currentUser?.uid;
+
+    // Check A: Previously rolled forward contracts whose end date has passed (< today)
+    const rolledForwardToExpire = contracts.filter((c) => {
+      if (c.status !== 'active') return false;
+      if (c.isEndDateOpenEnded) return false;
+      if (!c.followedByContractId && !c.manuallyRolledForwardAt) return false;
+      return Boolean(c.endDate && c.endDate < todayStr);
+    });
+
+    // Check B: Active contracts whose cancellation deadline is overdue (< 0 days)
+    // and need automatic roll forward
+    const overdueToAutoRollForward = contracts.filter((c) => {
       // Must be active and have a definitive end date / cancellation deadline
       if (c.status !== 'active' || c.isEndDateOpenEnded || !c.cancellationDeadline) return false;
 
-      // Cancellation deadline has passed (no days left, past notice deadline)
+      // Skip if already being expired in group A
+      if (rolledForwardToExpire.some((rf) => rf.id === c.id)) return false;
+
+      // Cancellation deadline has passed (past notice deadline)
       const days = getDaysRemaining(c.cancellationDeadline);
       if (days >= 0) return false;
 
-      // Auto-extension is enabled: either explicitly on contract, or globally in user settings
+      // Auto-extension is enabled: explicitly on contract, or globally in user settings (unless opted out)
       const isEnabled =
         c.autoExtendEnabled === true ||
-        (user.settings.autoExtendContracts === true &&
+        (user.settings.autoExtendContracts !== false &&
           c.autoExtendEnabled !== false &&
           c.autoRenew !== false);
 
       return isEnabled;
     });
 
-    if (eligible.length === 0) return;
+    if (rolledForwardToExpire.length === 0 && overdueToAutoRollForward.length === 0) {
+      return;
+    }
 
-    const currentUid = auth.currentUser?.uid;
-    const nowIso = new Date().toISOString();
-    const updatedContracts = contracts.map((c) => {
-      if (!eligible.some((ec) => ec.id === c.id)) return c;
+    const newRolledForwardContracts: Contract[] = [];
+    const updatedExistingMap = new Map<string, Contract>();
 
+    // Process A: Expire old contracts that were rolled forward and whose end date passed
+    rolledForwardToExpire.forEach((c) => {
+      updatedExistingMap.set(c.id, {
+        ...c,
+        status: 'expired',
+        updatedAt: nowIso,
+      });
+    });
+
+    // Process B: Automatic roll forward for overdue contracts + mark old contract as expired
+    overdueToAutoRollForward.forEach((c, idx) => {
       const period = c.autoExtendPeriod || user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' };
       const result = calculateAutoExtendedDates(c, period);
       const periodLabel = formatAutoExtendPeriod(result.periodUsed);
+      const newContractId = `cw_auto_rf_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`;
+
+      const clonedDocs: DocumentLink[] = (c.documentLinks || []).map((doc, docIdx) => ({
+        ...doc,
+        id: `doc_auto_${Date.now()}_${idx}_${docIdx}`,
+        contractId: newContractId,
+        addedAt: nowIso,
+      }));
 
       const newHistoryEntry: PriceHistoryEntry = {
-        id: `ph_auto_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        date: getTodayString(),
+        id: `ph_auto_${Date.now()}_${idx}`,
+        date: todayStr,
         annualCost: c.annualCost,
         monthlyCost: c.monthlyCost,
-        note: `Automatically extended by ${periodLabel} (no cancellation notice before deadline)`,
+        note: `Automatically rolled forward by ${periodLabel} (cancellation deadline passed without notice)`,
       };
 
-      const updated: Contract = {
+      const rolledForward: Contract = {
         ...c,
+        id: newContractId,
+        userId: currentUid || c.userId || user.id,
         startDate: result.startDate,
         endDate: result.endDate,
         cancellationDeadline: result.cancellationDeadline,
+        isEndDateOpenEnded: false,
+        isDeadlineOverridden: false,
+        status: 'active',
         autoExtendEnabled: true,
         autoExtendPeriod: result.periodUsed,
         lastAutoExtendedAt: nowIso,
         priceHistory: [newHistoryEntry, ...(c.priceHistory || [])],
+        documentLinks: clonedDocs,
+        createdAt: nowIso,
         updatedAt: nowIso,
       };
 
-      if (currentUid) {
-        saveContractToFirestore(currentUid, updated).catch(console.error);
-      }
+      newRolledForwardContracts.push(rolledForward);
 
-      return updated;
+      // Old contract gets status 'expired' and points to the new contract
+      updatedExistingMap.set(c.id, {
+        ...c,
+        status: 'expired',
+        followedByContractId: newContractId,
+        updatedAt: nowIso,
+      });
     });
+
+    // Assemble new contracts array: newly rolled forward at top, existing updated in place
+    const updatedContracts = [
+      ...newRolledForwardContracts,
+      ...contracts.map((c) => updatedExistingMap.get(c.id) || c),
+    ];
 
     setContracts(updatedContracts);
     saveContracts(updatedContracts);
 
-    const first = eligible[0];
-    const periodLabel = formatAutoExtendPeriod(first.autoExtendPeriod || user.settings.defaultAutoExtendPeriod);
-    setUndoToast({
-      id: `toast_auto_${Date.now()}`,
-      message:
-        eligible.length === 1
-          ? `Contract "${first.name}" was automatically extended by ${periodLabel}.`
-          : `${eligible.length} contracts were automatically extended according to settings.`,
-      onUndo: () => {
-        setContracts(contracts);
-        saveContracts(contracts);
-        if (currentUid) {
-          eligible.forEach((ec) => saveContractToFirestore(currentUid, ec).catch(() => {}));
-        }
-        setUndoToast(null);
-      },
-    });
+    if (currentUid) {
+      newRolledForwardContracts.forEach((rc) => saveContractToFirestore(currentUid, rc).catch(console.error));
+      updatedExistingMap.forEach((uc) => saveContractToFirestore(currentUid, uc).catch(console.error));
+    }
+
+    if (overdueToAutoRollForward.length > 0) {
+      const first = overdueToAutoRollForward[0];
+      const periodLabel = formatAutoExtendPeriod(first.autoExtendPeriod || user.settings.defaultAutoExtendPeriod);
+      setUndoToast({
+        id: `toast_auto_${Date.now()}`,
+        message:
+          overdueToAutoRollForward.length === 1
+            ? `Contract "${first.name}" cancellation deadline was overdue. Automatically rolled forward (+${periodLabel}) and old contract marked as expired.`
+            : `${overdueToAutoRollForward.length} contracts automatically rolled forward due to overdue cancellation deadlines. Previous contracts marked as expired.`,
+        onUndo: () => {
+          setContracts(contracts);
+          saveContracts(contracts);
+          if (currentUid) {
+            newRolledForwardContracts.forEach((rc) => deleteContractFromFirestore(currentUid, rc.id).catch(() => {}));
+            overdueToAutoRollForward.forEach((oc) => saveContractToFirestore(currentUid, oc).catch(() => {}));
+          }
+          setUndoToast(null);
+        },
+      });
+    }
   }, [contracts, user.settings.autoExtendContracts, user.settings.defaultAutoExtendPeriod]);
 
   // Explicit manual or programmatic sync with Firebase

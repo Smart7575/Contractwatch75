@@ -75,7 +75,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
   const [startDate, setStartDate] = useState(getTodayString());
   const [isEndDateOpenEnded, setIsEndDateOpenEnded] = useState(false);
   const [endDate, setEndDate] = useState('');
-  const [noticeValue, setNoticeValue] = useState(1);
+  const [noticeValue, setNoticeValue] = useState<number | ''>(1);
   const [noticeUnit, setNoticeUnit] = useState<NoticeUnit>('months');
   const [annualCost, setAnnualCost] = useState<number | ''>('');
   const [monthlyCost, setMonthlyCost] = useState<number | ''>('');
@@ -87,7 +87,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
   const [autoRenew, setAutoRenew] = useState(true);
   const [renewalPeriod, setRenewalPeriod] = useState('1 month rolling');
   const [autoExtendEnabled, setAutoExtendEnabled] = useState(false);
-  const [autoExtendPeriodValue, setAutoExtendPeriodValue] = useState(1);
+  const [autoExtendPeriodValue, setAutoExtendPeriodValue] = useState<number | ''>(1);
   const [autoExtendPeriodUnit, setAutoExtendPeriodUnit] = useState<'months' | 'years'>('years');
   const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>('monthly');
   const [status, setStatus] = useState<ContractStatus>('active');
@@ -230,9 +230,10 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       if (isEndDateOpenEnded) {
         const calculated = calculateRollingNoticeDeadline(startDate);
         setCancellationDeadline(calculated);
-      } else if (endDate && noticeValue) {
+      } else if (endDate) {
+        const val = noticeValue === '' ? 0 : Number(noticeValue);
         const calculated = calculateCancellationDeadline(endDate, {
-          value: noticeValue,
+          value: isNaN(val) ? 0 : val,
           unit: noticeUnit,
         });
         setCancellationDeadline(calculated);
@@ -326,7 +327,9 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       newErrors.endDate = 'End date cannot be earlier than starting date.';
     }
     if (!annualCost && annualCost !== 0) newErrors.annualCost = 'Cost is required.';
-    if (noticeValue < 0 || isNaN(noticeValue)) newErrors.noticeValue = 'Valid notice period required.';
+    if (noticeValue === '' || isNaN(Number(noticeValue)) || Number(noticeValue) < 0) {
+      newErrors.noticeValue = 'Valid notice period required.';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -355,12 +358,12 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       startDate: startDate || getTodayString(),
       isEndDateOpenEnded,
       endDate: isEndDateOpenEnded ? '' : (endDate || getTodayString()),
-      noticePeriod: { value: Number(noticeValue), unit: noticeUnit },
+      noticePeriod: { value: noticeValue === '' ? 0 : Number(noticeValue), unit: noticeUnit },
       cancellationDeadline:
         cancellationDeadline ||
         (isEndDateOpenEnded
           ? calculateRollingNoticeDeadline(startDate)
-          : calculateCancellationDeadline(endDate, { value: noticeValue, unit: noticeUnit })),
+          : calculateCancellationDeadline(endDate, { value: noticeValue === '' ? 0 : Number(noticeValue), unit: noticeUnit })),
       isDeadlineOverridden,
       autoRenew,
       renewalPeriod: renewalPeriod.trim() || '1 month rolling',
@@ -848,8 +851,19 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     type="number"
                     min={0}
                     value={noticeValue}
-                    onChange={(e) => setNoticeValue(parseInt(e.target.value, 10) || 0)}
-                    className="w-20 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-center font-mono tabular-nums"
+                    placeholder="0"
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        setNoticeValue('');
+                      } else {
+                        const parsed = parseInt(raw, 10);
+                        setNoticeValue(isNaN(parsed) ? '' : Math.max(0, parsed));
+                      }
+                    }}
+                    className={`w-20 px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-center font-mono tabular-nums ${
+                      errors.noticeValue ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
+                    }`}
                   />
                   <select
                     value={noticeUnit}
@@ -861,6 +875,9 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     <option value="months">Months (default)</option>
                   </select>
                 </div>
+                {errors.noticeValue && (
+                  <p className="text-[11px] text-rose-500 mt-1">{errors.noticeValue}</p>
+                )}
               </div>
 
               {/* Automatic Cancellation Deadline Showcase */}
@@ -885,7 +902,8 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={cancellationDeadline}
                     onChange={(e) => setCancellationDeadline(e.target.value)}
                     className="w-full px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 font-mono tabular-nums text-xs"
-                  />
+                  >
+                  </input>
                 ) : (
                   <div className="flex items-baseline justify-between">
                     <span className="text-base font-bold text-indigo-700 dark:text-indigo-300 font-mono tabular-nums">
@@ -897,7 +915,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                           (Monthly cycle, renews on day {startDate ? parseInt(startDate.split('-')[2], 10) : '—'} of each month)
                         </>
                       ) : (
-                        `(End date − ${noticeValue} ${noticeUnit})`
+                        `(End date − ${noticeValue !== '' ? noticeValue : 0} ${noticeUnit})`
                       )}
                     </span>
                   </div>
@@ -1080,7 +1098,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                           Configured Extension Period
                         </label>
                         <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md">
-                          + {formatAutoExtendPeriod({ value: autoExtendPeriodValue, unit: autoExtendPeriodUnit })}
+                          + {formatAutoExtendPeriod({ value: typeof autoExtendPeriodValue === 'number' ? autoExtendPeriodValue : 1, unit: autoExtendPeriodUnit })}
                         </span>
                       </div>
 
@@ -1123,7 +1141,16 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                           min={1}
                           max={120}
                           value={autoExtendPeriodValue}
-                          onChange={(e) => setAutoExtendPeriodValue(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                          placeholder="1"
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') {
+                              setAutoExtendPeriodValue('');
+                            } else {
+                              const parsed = parseInt(raw, 10);
+                              setAutoExtendPeriodValue(isNaN(parsed) ? '' : Math.max(1, parsed));
+                            }
+                          }}
                           className="w-20 px-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-center font-mono font-bold text-slate-900 dark:text-white"
                         />
                         <select

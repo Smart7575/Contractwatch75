@@ -56,7 +56,7 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
   const effectiveDeadline = getEffectiveCancellationDeadline(contract);
   const daysRemaining = getDaysRemaining(effectiveDeadline);
   const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
-  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
+  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status);
 
   const category = categories.find((c) => c.id === contract.categoryId);
 
@@ -381,7 +381,13 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
               <span>Cancel</span>
             </button>
           ) : (
-            <span className="text-[11px] uppercase font-bold text-slate-400">
+            <span
+              className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md ${
+                contract.status === 'expired'
+                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80'
+                  : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800'
+              }`}
+            >
               {contract.status}
             </span>
           )}
