@@ -11,6 +11,8 @@ import {
   getUrgencyLevel,
   getUrgencyMetadata,
   getEffectiveCancellationDeadline,
+  isContractRolledForward,
+  isContractCancelledActive,
 } from '../../lib/dateUtils';
 import {
   AlertTriangle,
@@ -46,6 +48,7 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
     markContractStatus,
     snoozeContract,
     toggleFavorite,
+    contracts,
     categories,
     user,
   } = useApp();
@@ -55,8 +58,10 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
 
   const effectiveDeadline = getEffectiveCancellationDeadline(contract);
   const daysRemaining = getDaysRemaining(effectiveDeadline);
-  const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
-  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status);
+  const isRolledForward = isContractRolledForward(contract, contracts);
+  const isCancelledActive = isContractCancelledActive(contract);
+  const urgency = getUrgencyLevel(effectiveDeadline, contract.status, isRolledForward, isCancelledActive);
+  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status, isRolledForward, isCancelledActive);
 
   const category = categories.find((c) => c.id === contract.categoryId);
 
@@ -371,11 +376,27 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
           </div>
 
           {/* Mark Cancelled / Switched toggle */}
-          {contract.status === 'active' ? (
+          {isCancelledActive ? (
+            <div className="flex items-center gap-1.5">
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200/80 dark:border-teal-800/80"
+                title={`Cancellation notice given · Contract active and fulfilled until ${formatDate(contract.endDate)}`}
+              >
+                Active (Cancelled)
+              </span>
+              <button
+                onClick={() => markContractStatus(contract.id, 'active')}
+                className="text-[11px] font-medium text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 underline cursor-pointer"
+                title="Undo cancellation and restore active status"
+              >
+                Undo
+              </button>
+            </div>
+          ) : contract.status === 'active' ? (
             <button
               onClick={() => markContractStatus(contract.id, 'cancelled')}
               className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-md transition cursor-pointer"
-              title="Mark as cancelled"
+              title="Mark as cancelled (remains active until end date)"
             >
               <Check className="w-3 h-3 text-emerald-500" />
               <span>Cancel</span>
@@ -385,6 +406,8 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
               className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md ${
                 contract.status === 'expired'
                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80'
+                  : contract.status === 'not started yet'
+                  ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800/80'
                   : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800'
               }`}
             >

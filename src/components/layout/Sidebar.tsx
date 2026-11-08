@@ -24,7 +24,7 @@ import {
   Cloud,
   RefreshCw,
 } from 'lucide-react';
-import { formatCurrency } from '../../lib/dateUtils';
+import { formatCurrency, getDaysRemaining, getEffectiveCancellationDeadline, isContractRolledForward, isContractActive } from '../../lib/dateUtils';
 import { getCategoryIconComponent } from '../../lib/categoryIcons';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -84,36 +84,36 @@ export const Sidebar: React.FC = () => {
   };
 
   // Group stats
-  const activeContracts = contracts.filter((c) => c.status === 'active');
+  const activeContracts = contracts.filter((c) => isContractActive(c));
   const overdueCount = activeContracts.filter((c) => {
-    const diff = Math.round(
-      (new Date(c.cancellationDeadline).getTime() - new Date().getTime()) /
-        (1000 * 60 * 60 * 24)
-    );
+    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
+    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return diff < 0;
   }).length;
 
   const next30Count = activeContracts.filter((c) => {
-    const diff = Math.round(
-      (new Date(c.cancellationDeadline).getTime() - new Date().getTime()) /
-        (1000 * 60 * 60 * 24)
-    );
+    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
+    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return diff >= 0 && diff <= 30;
   }).length;
 
   const in31to90Count = activeContracts.filter((c) => {
-    const diff = Math.round(
-      (new Date(c.cancellationDeadline).getTime() - new Date().getTime()) /
-        (1000 * 60 * 60 * 24)
-    );
+    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
+    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return diff > 30 && diff <= 90;
+  }).length;
+
+  const olderThan90Count = activeContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return true;
+    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
+    return diff > 90;
   }).length;
 
   // Categories sorted alphabetically by name with spend > 0
   const sortedCategories = categories
     .map((category) => {
       const categoryContracts = contracts.filter(
-        (c) => c.categoryId === category.id && c.status === 'active'
+        (c) => c.categoryId === category.id && isContractActive(c)
       );
       const totalSpend = categoryContracts.reduce(
         (sum, c) => sum + (c.annualCost || 0),
@@ -338,6 +338,28 @@ export const Sidebar: React.FC = () => {
                   </span>
                 )}
               </button>
+
+              <button
+                onClick={() => applyFilter({ urgency: 'later', status: 'active' })}
+                title={`More than 90 days (${olderThan90Count})`}
+                className={`w-full flex items-center ${
+                  isCollapsed ? 'justify-center p-1.5' : 'justify-between px-2.5 py-1.5'
+                } text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                  filters.urgency === 'later'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500 shrink-0" />
+                  {!isCollapsed && <span>More than 90 days</span>}
+                </div>
+                {!isCollapsed && (
+                  <span className="text-[11px] font-mono tabular-nums text-slate-400">
+                    {olderThan90Count}
+                  </span>
+                )}
+              </button>
             </div>
           )}
         </div>
@@ -392,7 +414,7 @@ export const Sidebar: React.FC = () => {
                 </div>
                 {!isCollapsed && (
                   <span className="text-[11px] font-mono tabular-nums text-slate-400">
-                    {contracts.length}
+                    {filters.status === 'all' ? contracts.length : activeContracts.length}
                   </span>
                 )}
               </button>

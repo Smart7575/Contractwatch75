@@ -8,6 +8,8 @@ import {
   getUrgencyLevel,
   getUrgencyMetadata,
   getEffectiveCancellationDeadline,
+  isContractRolledForward,
+  isContractCancelledActive,
 } from '../../lib/dateUtils';
 import {
   AlertTriangle,
@@ -79,8 +81,10 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
             const category = categories.find((c) => c.id === contract.categoryId);
             const deadline = getEffectiveCancellationDeadline(contract);
             const days = getDaysRemaining(deadline);
-            const urgency = getUrgencyLevel(deadline, contract.status);
-            const urgencyMeta = getUrgencyMetadata(urgency, days);
+            const isRolledForward = isContractRolledForward(contract, contracts);
+            const isCancelledActive = isContractCancelledActive(contract);
+            const urgency = getUrgencyLevel(deadline, contract.status, isRolledForward, isCancelledActive);
+            const urgencyMeta = getUrgencyMetadata(urgency, days, contract.status, isRolledForward, isCancelledActive);
 
             const UrgencyIcon =
               urgency === 'overdue'
@@ -175,16 +179,21 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
                 <td className="py-3 px-3 text-center">
                   <span
                     className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm ${
-                      contract.status === 'active'
+                      isCancelledActive
+                        ? 'bg-teal-50 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200/80 dark:border-teal-800/80'
+                        : contract.status === 'active'
                         ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
+                        : contract.status === 'not started yet'
+                        ? 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800/80'
                         : contract.status === 'expired'
                         ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80'
                         : contract.status === 'cancelled'
                         ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                        : 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-400'
+                        : 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400'
                     }`}
+                    title={isCancelledActive ? `Notice given · Active until ${formatDate(contract.endDate)}` : undefined}
                   >
-                    {contract.status}
+                    {isCancelledActive ? 'Active (Cancelled)' : contract.status}
                   </span>
                 </td>
 

@@ -1,12 +1,19 @@
 import { Contract, Category, User } from '../types';
-import { formatCurrency, formatDate, getDaysRemaining, getEffectiveCancellationDeadline } from './dateUtils';
+import {
+  formatCurrency,
+  formatDate,
+  getDaysRemaining,
+  getEffectiveCancellationDeadline,
+  isContractActive,
+  isContractCancelledActive,
+} from './dateUtils';
 
 export function generatePrintableHTML(
   contracts: Contract[],
   categories: Category[],
   user: User
 ): string {
-  const activeContracts = contracts.filter((c) => c.status === 'active');
+  const activeContracts = contracts.filter((c) => isContractActive(c));
   const totalAnnualSpend = activeContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const totalMonthlySpend = activeContracts.reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
   const totalDocs = contracts.reduce((sum, c) => sum + (c.documentLinks?.length || 0), 0);
@@ -27,7 +34,7 @@ export function generatePrintableHTML(
       if (catContracts.length === 0) return '';
 
       const catSpend = catContracts
-        .filter((c) => c.status === 'active')
+        .filter((c) => isContractActive(c))
         .reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
       const contractsRows = catContracts
@@ -80,7 +87,7 @@ export function generatePrintableHTML(
                     <strong>${c.supplier}</strong> · ${c.subcategory}
                     ${c.coverageType ? `· <span class="coverage-badge" style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;">${c.coverageType === 'family' ? 'Family' : 'Individual'}</span>` : ''}
                     ${c.contractNumber ? `· Ref: ${c.contractNumber}` : ''}
-                    · Status: <span class="status-${c.status}">${c.status.toUpperCase()}</span>
+                    · Status: <span class="status-${c.status}">${isContractCancelledActive(c) ? 'ACTIVE (CANCELLED)' : c.status.toUpperCase()}</span>
                   </div>
                 </div>
                 <div class="contract-cost">
@@ -301,7 +308,7 @@ export function generatePrintableHTML(
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Notice Window (≤30d)</div>
-      <div class="kpi-value">${activeContracts.filter(c => { const d = getDaysRemaining(c.cancellationDeadline); return d >= 0 && d <= 30; }).length}</div>
+      <div class="kpi-value">${activeContracts.filter(c => { if (isContractCancelledActive(c)) return false; const d = getDaysRemaining(c.cancellationDeadline); return d >= 0 && d <= 30; }).length}</div>
       <div class="kpi-sub">Action required</div>
     </div>
   </div>

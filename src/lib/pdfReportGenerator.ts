@@ -1,6 +1,14 @@
 import { jsPDF } from 'jspdf';
 import { Contract, Category, User } from '../types';
-import { formatCurrency, formatDate, getDaysRemaining, getEffectiveCancellationDeadline } from './dateUtils';
+import {
+  formatCurrency,
+  formatDate,
+  getDaysRemaining,
+  getEffectiveCancellationDeadline,
+  isContractRolledForward,
+  isContractActive,
+  isContractCancelledActive,
+} from './dateUtils';
 
 export function isAppleTouchDevice(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -73,7 +81,7 @@ export function createPortfolioPDFDoc(
   // PART 1: RADAR OVERVIEW (PAGE 1)
   // Master Cancellation Notice Horizons & Contract Overview
   // ==========================================
-  const activeContracts = contracts.filter((c) => c.status === 'active');
+  const activeContracts = contracts.filter((c) => isContractActive(c));
   const totalAnnualSpend = activeContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const totalMonthlySpend = activeContracts.reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
 
@@ -126,18 +134,22 @@ export function createPortfolioPDFDoc(
 
   // 2. Radar Notice Horizons (4 Compact Status Cards)
   const overdueContractsList = activeContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts)) return false;
     const days = getDaysRemaining(c.cancellationDeadline);
     return days < 0;
   });
   const next30ContractsList = activeContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts)) return false;
     const days = getDaysRemaining(c.cancellationDeadline);
     return days >= 0 && days <= 30;
   });
   const days31to90ContractsList = activeContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts)) return false;
     const days = getDaysRemaining(c.cancellationDeadline);
     return days > 30 && days <= 90;
   });
   const laterContractsList = activeContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts)) return true;
     const days = getDaysRemaining(c.cancellationDeadline);
     return days > 90;
   });
@@ -291,15 +303,21 @@ export function createPortfolioPDFDoc(
     const deadline = getEffectiveCancellationDeadline(contract);
     const days = getDaysRemaining(deadline);
     const category = categories.find((c) => c.id === contract.categoryId);
-    const isOverdue = days < 0;
-    const isUrgent = days >= 0 && days <= 30;
-    const isMid = days > 30 && days <= 90;
+    const isRolledForward = isContractRolledForward(contract, contracts);
+    const isCancelledActive = isContractCancelledActive(contract);
+    const isOverdue = !isRolledForward && !isCancelledActive && days < 0;
+    const isUrgent = !isRolledForward && !isCancelledActive && days >= 0 && days <= 30;
+    const isMid = !isRolledForward && !isCancelledActive && days > 30 && days <= 90;
 
     // Row container
     if (isOverdue) {
       doc.setFillColor(255, 241, 242); // Rose 50
     } else if (isUrgent) {
       doc.setFillColor(254, 243, 199); // Amber 50
+    } else if (isRolledForward) {
+      doc.setFillColor(245, 247, 255); // Indigo 50 subtle
+    } else if (isCancelledActive) {
+      doc.setFillColor(240, 253, 250); // Teal 50 subtle
     } else {
       doc.setFillColor(255, 255, 255);
     }
@@ -307,7 +325,11 @@ export function createPortfolioPDFDoc(
     doc.rect(margin, y, contentWidth, rowHeight, 'FD');
 
     // Urgency left indicator bar
-    if (isOverdue) {
+    if (isRolledForward) {
+      doc.setFillColor(99, 102, 241); // Indigo 500
+    } else if (isCancelledActive) {
+      doc.setFillColor(13, 148, 136); // Teal 600
+    } else if (isOverdue) {
       doc.setFillColor(225, 29, 72); // Rose 600
     } else if (isUrgent) {
       doc.setFillColor(217, 119, 6); // Amber 600
@@ -352,7 +374,11 @@ export function createPortfolioPDFDoc(
     // Col 3: Notice Deadline & Horizon (margin + 112, width ~48mm)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.3);
-    if (isOverdue) {
+    if (isRolledForward) {
+      doc.setTextColor(99, 102, 241); // Indigo
+    } else if (isCancelledActive) {
+      doc.setTextColor(15, 118, 110); // Teal
+    } else if (isOverdue) {
       doc.setTextColor(225, 29, 72); // Rose
     } else if (isUrgent) {
       doc.setTextColor(217, 119, 6); // Amber
@@ -366,7 +392,11 @@ export function createPortfolioPDFDoc(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.2);
     let horizonPill = `${days}d left (Safe)`;
-    if (isOverdue) {
+    if (isRolledForward) {
+      horizonPill = 'Rolled Forward';
+    } else if (isCancelledActive) {
+      horizonPill = `Active (Cancelled) · Until ${contract.endDate ? formatDate(contract.endDate) : 'end'}`;
+    } else if (isOverdue) {
       horizonPill = `${Math.abs(days)}d OVERDUE`;
     } else if (isUrgent) {
       horizonPill = `${days}d left (Action Required)`;
@@ -465,7 +495,7 @@ export function createPortfolioPDFDoc(
   const categoriesWithSpend = categories
     .map((cat) => {
       const catSpend = contracts
-        .filter((c) => c.categoryId === cat.id && c.status === 'active')
+        .filter((c) => c.categoryId === cat.id && isContractActive(c))
         .reduce((sum, c) => sum + (c.annualCost || 0), 0);
       const spendPercentage = totalAnnualSpend > 0 ? (catSpend / totalAnnualSpend) * 100 : 0;
       return { category: cat, annualSpend: catSpend, spendPercentage };
@@ -476,10 +506,10 @@ export function createPortfolioPDFDoc(
   const familyContracts = contracts.filter((c) => c.coverageType === 'family');
   const individualContracts = contracts.filter((c) => c.coverageType === 'individual');
   const familySpend = familyContracts
-    .filter((c) => c.status === 'active')
+    .filter((c) => isContractActive(c))
     .reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const individualSpend = individualContracts
-    .filter((c) => c.status === 'active')
+    .filter((c) => isContractActive(c))
     .reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
   // Spend Distribution Bar Section Box
@@ -575,12 +605,12 @@ export function createPortfolioPDFDoc(
     if (catContracts.length === 0) return;
 
     const catSpend = catContracts
-      .filter((c) => c.status === 'active')
+      .filter((c) => isContractActive(c))
       .reduce((sum, c) => sum + (c.annualCost || 0), 0);
     const catMonthly = catContracts
-      .filter((c) => c.status === 'active')
+      .filter((c) => isContractActive(c))
       .reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
-    const catActiveCount = catContracts.filter((c) => c.status === 'active').length;
+    const catActiveCount = catContracts.filter((c) => isContractActive(c)).length;
     const catDocsCount = catContracts.reduce((sum, c) => sum + (c.documentLinks?.length || 0), 0);
 
     // Group contracts by subcategory inside this category
@@ -646,7 +676,7 @@ export function createPortfolioPDFDoc(
     // Iterate Subcategory Groups
     Array.from(subcategoryMap.entries()).forEach(([subName, subContracts]) => {
       const subSpend = subContracts
-        .filter((c) => c.status === 'active')
+        .filter((c) => isContractActive(c))
         .reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
       checkPageBreak(18);
@@ -756,13 +786,19 @@ export function createPortfolioPDFDoc(
         cursorX += doc.getTextWidth(contract.name) + 3;
 
         // Status Badge Pill
-        const statusLabel = contract.status.toUpperCase();
+        const isCancelledActive = isContractCancelledActive(contract);
+        const statusLabel = isCancelledActive ? 'ACTIVE (CANCELLED)' : contract.status.toUpperCase();
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
         const statusTextW = doc.getTextWidth(statusLabel);
         const statusBadgeW = statusTextW + 4;
 
-        if (contract.status === 'active') {
+        if (isCancelledActive) {
+          doc.setFillColor(240, 253, 250); // Teal 50
+          doc.setDrawColor(153, 246, 228); // Teal 200
+          doc.roundedRect(cursorX, row1Y - 3.5, statusBadgeW, 4.4, 1.5, 1.5, 'FD');
+          doc.setTextColor(15, 118, 110);  // Teal 700
+        } else if (contract.status === 'active') {
           doc.setFillColor(236, 253, 245); // Emerald 50
           doc.setDrawColor(167, 243, 208); // Emerald 200
           doc.roundedRect(cursorX, row1Y - 3.5, statusBadgeW, 4.4, 1.5, 1.5, 'FD');

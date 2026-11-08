@@ -8,6 +8,9 @@ import {
   getUrgencyLevel,
   getUrgencyMetadata,
   getEffectiveCancellationDeadline,
+  isContractRolledForward,
+  isContractActive,
+  isContractCancelledActive,
 } from '../../lib/dateUtils';
 import { exportContractsToCSV } from '../../lib/csvHelper';
 import { generatePortfolioPDF, exportPDFReport, isAppleTouchDevice } from '../../lib/pdfReportGenerator';
@@ -297,10 +300,11 @@ export const ReportsPage: React.FC = () => {
       }
 
       // Status filter
-      if (statusFilter === 'active' && c.status !== 'active') return false;
-      if (statusFilter === 'expired' && c.status !== 'expired') return false;
+      if (statusFilter === 'active' && !isContractActive(c)) return false;
+      if (statusFilter === 'expired' && c.status !== 'expired' && !isContractCancelledActive(c)) return false;
       if (statusFilter === 'urgent') {
-        if (c.status !== 'active') return false;
+        if (!isContractActive(c) || isContractCancelledActive(c)) return false;
+        if (isContractRolledForward(c, contracts)) return false;
         const deadline = getEffectiveCancellationDeadline(c);
         const days = getDaysRemaining(deadline);
         if (days < 0 || days > 30) return false;
@@ -336,7 +340,7 @@ export const ReportsPage: React.FC = () => {
   }, [contracts, selectedCategoryFilter, statusFilter, coverageFilter, docsOnly, searchQuery]);
 
   // Aggregate stats across all contracts
-  const totalActiveContracts = contracts.filter((c) => c.status === 'active');
+  const totalActiveContracts = contracts.filter((c) => isContractActive(c));
   const totalAnnualSpend = totalActiveContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const totalMonthlySpend = totalActiveContracts.reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
   const totalDocuments = contracts.reduce((sum, c) => sum + (c.documentLinks?.length || 0), 0);
@@ -352,29 +356,36 @@ export const ReportsPage: React.FC = () => {
     .reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
   const urgentContractsCount = totalActiveContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
     const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days >= 0 && days <= 30;
   }).length;
 
   const overdueContractsCount = totalActiveContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
     const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days < 0;
   }).length;
 
   // Cancellation Radar Horizons Breakdown
+  // Contracts that have already rolled forward or have been cancelled have had their notice processed and are not pending notice action
   const overdueContractsList = totalActiveContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
     const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days < 0;
   });
   const next30ContractsList = totalActiveContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
     const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days >= 0 && days <= 30;
   });
   const days31to90ContractsList = totalActiveContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
     const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days > 30 && days <= 90;
   });
   const laterContractsList = totalActiveContracts.filter((c) => {
+    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return true;
     const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
     return days > 90;
   });
@@ -384,6 +395,7 @@ export const ReportsPage: React.FC = () => {
   const days31to90SpendTotal = days31to90ContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const laterSpendTotal = laterContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
+  // Radar Action Queue: excludes rolled forward contracts
   const priorityActionContracts = [...overdueContractsList, ...next30ContractsList].sort((a, b) =>
     (a.cancellationDeadline || '').localeCompare(b.cancellationDeadline || '')
   );
@@ -416,16 +428,16 @@ export const ReportsPage: React.FC = () => {
         const subcategoryGroups = Array.from(subcategoryMap.entries()).map(([subcategoryName, subContracts]) => ({
           subcategoryName,
           contracts: subContracts,
-          activeCount: subContracts.filter((c) => c.status === 'active').length,
+          activeCount: subContracts.filter((c) => isContractActive(c)).length,
           annualSpend: subContracts
-            .filter((c) => c.status === 'active')
+            .filter((c) => isContractActive(c))
             .reduce((sum, c) => sum + (c.annualCost || 0), 0),
           monthlySpend: subContracts
-            .filter((c) => c.status === 'active')
+            .filter((c) => isContractActive(c))
             .reduce((sum, c) => sum + (c.monthlyCost || 0), 0),
         }));
 
-        const activeCatContracts = catContracts.filter((c) => c.status === 'active');
+        const activeCatContracts = catContracts.filter((c) => isContractActive(c));
         const catAnnualSpend = activeCatContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
         const catMonthlySpend = activeCatContracts.reduce((sum, c) => sum + (c.monthlyCost || 0), 0);
         const catDocsCount = catContracts.reduce((sum, c) => sum + (c.documentLinks?.length || 0), 0);
@@ -1112,11 +1124,13 @@ export const ReportsPage: React.FC = () => {
                                     {contract.name}
                                   </button>
                                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                    contract.status === 'active'
+                                    isContractCancelledActive(contract)
+                                      ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60'
+                                      : contract.status === 'active'
                                       ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
                                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                   }`}>
-                                    {contract.status.toUpperCase()}
+                                    {isContractCancelledActive(contract) ? 'ACTIVE (CANCELLED)' : contract.status.toUpperCase()}
                                   </span>
                                   {contract.coverageType && (
                                     <span

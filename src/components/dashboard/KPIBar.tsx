@@ -1,24 +1,26 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency, getDaysRemaining, getEffectiveCancellationDeadline } from '../../lib/dateUtils';
+import { formatCurrency, getDaysRemaining, getEffectiveCancellationDeadline, isContractActive } from '../../lib/dateUtils';
 import { FileText, ShieldAlert, Wallet } from 'lucide-react';
 
 export const KPIBar: React.FC = () => {
   const { contracts, user, setFilters, filters } = useApp();
 
-  const activeContracts = contracts.filter((c) => c.status === 'active');
+  const activeContracts = contracts.filter((c) => isContractActive(c));
   const totalAnnualCost = activeContracts.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const totalMonthlyCost = totalAnnualCost / 12;
 
   // Action required: active contracts where cancellation deadline is within the next 30 days (0 <= days <= 30).
-  // Overdue contracts (days < 0) are excluded because it is already too late for notice action.
+  // Overdue contracts and already-cancelled contracts are excluded.
   const actionRequiredContracts = activeContracts.filter((c) => {
+    if (c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
     const deadline = getEffectiveCancellationDeadline(c);
     const days = getDaysRemaining(deadline);
     return days >= 0 && days <= 30;
   });
 
   const overdueContracts = activeContracts.filter((c) => {
+    if (c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
     const deadline = getEffectiveCancellationDeadline(c);
     const days = getDaysRemaining(deadline);
     return days < 0;

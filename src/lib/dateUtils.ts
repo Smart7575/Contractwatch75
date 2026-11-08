@@ -281,13 +281,68 @@ export function getDaysRemaining(targetDateStr: string): number {
 }
 
 /**
+ * Determines whether a contract has been rolled forward to a successor term.
+ */
+export function isContractRolledForward(contract: Contract, allContracts?: Contract[]): boolean {
+  if (contract.followedByContractId) return true;
+  if (contract.manuallyRolledForwardAt) return true;
+  if (allContracts && allContracts.length > 0) {
+    return allContracts.some(
+      (other) =>
+        other.id !== contract.id &&
+        (other.followedByContractId === contract.id ||
+          (other.id.startsWith('cw_rolled_') &&
+            other.supplier === contract.supplier &&
+            other.name === contract.name &&
+            other.startDate === contract.endDate))
+    );
+  }
+  return false;
+}
+
+/**
+ * Determines whether a contract is marked as cancelled but still active and being fulfilled
+ * until its end period.
+ */
+export function isContractCancelledActive(contract: Contract, todayStr?: string): boolean {
+  const today = todayStr || getTodayString();
+  const isMarkedCancelled = contract.status === 'cancelled' || Boolean(contract.cancelledAt);
+  if (!isMarkedCancelled) return false;
+  if (contract.isEndDateOpenEnded) return false;
+  return Boolean(contract.endDate && contract.endDate >= today);
+}
+
+/**
+ * Determines whether a contract is currently active (being fulfilled),
+ * including contracts marked as cancelled whose contract end period is in the future.
+ */
+export function isContractActive(contract: Contract, todayStr?: string): boolean {
+  const today = todayStr || getTodayString();
+  // Future start date contracts are 'not started yet'
+  if (contract.startDate && contract.startDate > today) {
+    return false;
+  }
+  if (contract.status === 'active') {
+    return true;
+  }
+  // If a contract is marked as cancelled, it should still show as active if the contract end period
+  // is in the future because the contract will be fulfilled until the end of the contract period.
+  if (isContractCancelledActive(contract, today)) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Determines urgency level based on cancellation deadline and status
  */
 export function getUrgencyLevel(
   cancellationDeadlineStr: string,
-  status: string = 'active'
+  status: string = 'active',
+  hasRolledForward: boolean = false,
+  isCancelledActive: boolean = false
 ): UrgencyLevel {
-  if (status !== 'active') {
+  if (status !== 'active' || hasRolledForward || isCancelledActive) {
     return 'later';
   }
   const days = getDaysRemaining(cancellationDeadlineStr);
@@ -300,7 +355,24 @@ export function getUrgencyLevel(
 /**
  * Human readable urgency display info
  */
-export function getUrgencyMetadata(urgency: UrgencyLevel, daysRemaining: number, status?: string) {
+export function getUrgencyMetadata(
+  urgency: UrgencyLevel,
+  daysRemaining: number,
+  status?: string,
+  hasRolledForward?: boolean,
+  isCancelledActive?: boolean
+) {
+  if (isCancelledActive) {
+    return {
+      label: 'Active (Cancelled)',
+      badgeText: 'Active (Cancelled)',
+      colorClass: 'text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 border-teal-200 dark:border-teal-900',
+      textClass: 'text-teal-700 dark:text-teal-400',
+      borderClass: 'border-l-teal-500',
+      bgSubtle: 'bg-teal-500/10',
+      priority: 3,
+    };
+  }
   if (status === 'expired') {
     return {
       label: 'Expired',
@@ -312,6 +384,17 @@ export function getUrgencyMetadata(urgency: UrgencyLevel, daysRemaining: number,
       priority: 5,
     };
   }
+  if (status === 'not started yet') {
+    return {
+      label: 'Not Started Yet',
+      badgeText: 'Not Started Yet',
+      colorClass: 'text-sky-800 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 border-sky-200 dark:border-sky-900',
+      textClass: 'text-sky-700 dark:text-sky-400',
+      borderClass: 'border-l-sky-500',
+      bgSubtle: 'bg-sky-500/10',
+      priority: 7,
+    };
+  }
   if (status === 'cancelled') {
     return {
       label: 'Cancelled',
@@ -321,6 +404,17 @@ export function getUrgencyMetadata(urgency: UrgencyLevel, daysRemaining: number,
       borderClass: 'border-l-slate-400',
       bgSubtle: 'bg-slate-500/10',
       priority: 6,
+    };
+  }
+  if (hasRolledForward) {
+    return {
+      label: 'Rolled Forward',
+      badgeText: 'Rolled Forward',
+      colorClass: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-900',
+      textClass: 'text-indigo-700 dark:text-indigo-400',
+      borderClass: 'border-l-indigo-500',
+      bgSubtle: 'bg-indigo-500/10',
+      priority: 4,
     };
   }
 

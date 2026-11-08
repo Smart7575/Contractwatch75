@@ -1,6 +1,6 @@
 export type UrgencyLevel = 'overdue' | 'next_30' | '31_90' | 'later';
 
-export type ContractStatus = 'active' | 'cancelled' | 'expired' | 'switching';
+export type ContractStatus = 'active' | 'cancelled' | 'expired' | 'switching' | 'not started yet';
 
 export type NoticeUnit = 'days' | 'weeks' | 'months';
 
@@ -90,6 +90,7 @@ export interface Contract {
   autoExtendPeriod?: AutoExtendPeriod; // Specified extension period (e.g. 1 month, 1 year, 2 years)
   lastAutoExtendedAt?: string; // ISO timestamp of last auto-extension
   manuallyRolledForwardAt?: string; // ISO timestamp when manually rolled forward
+  cancelledAt?: string; // ISO timestamp when marked as cancelled
   annualCost: number;
   monthlyCost: number;
   paymentFrequency: PaymentFrequency;
@@ -173,7 +174,7 @@ export interface FilterState {
   search: string;
   categoryId: string;
   urgency: string; // 'all' | 'overdue' | 'next_30' | '31_90' | 'later' | 'needs_action'
-  status: string; // 'all' | 'active' | 'cancelled' | 'switching' | 'expired'
+  status: string; // 'all' | 'active' | 'not started yet' | 'cancelled' | 'switching' | 'expired'
   supplier: string;
   tag: string;
   coverageType?: string; // 'all' | 'family' | 'individual'

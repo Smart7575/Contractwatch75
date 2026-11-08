@@ -4,7 +4,7 @@ import { ContractCard } from '../contracts/ContractCard';
 import { TableView } from './TableView';
 import { TimelineView } from './TimelineView';
 import { RadarKanban } from './RadarKanban';
-import { getDaysRemaining, getUrgencyLevel, getEffectiveCancellationDeadline } from '../../lib/dateUtils';
+import { getDaysRemaining, getUrgencyLevel, getEffectiveCancellationDeadline, isContractRolledForward, isContractActive, isContractCancelledActive } from '../../lib/dateUtils';
 import {
   Search,
   LayoutGrid,
@@ -127,8 +127,14 @@ export const CancellationRadar: React.FC = () => {
   const filteredContracts = useMemo(() => {
     return contracts.filter((c) => {
       // Status filter
-      if (filters.status !== 'all' && c.status !== filters.status) {
-        return false;
+      if (filters.status !== 'all') {
+        if (filters.status === 'active') {
+          if (!isContractActive(c)) return false;
+        } else if (filters.status === 'cancelled') {
+          if (c.status !== 'cancelled' && !c.cancelledAt) return false;
+        } else if (c.status !== filters.status) {
+          return false;
+        }
       }
 
       // Category filter
@@ -146,7 +152,9 @@ export const CancellationRadar: React.FC = () => {
       // Urgency filter
       if (filters.urgency !== 'all') {
         const deadline = getEffectiveCancellationDeadline(c);
-        const urgency = getUrgencyLevel(deadline, c.status);
+        const isRolledForward = isContractRolledForward(c, contracts);
+        const isCancelledActive = isContractCancelledActive(c);
+        const urgency = getUrgencyLevel(deadline, c.status, isRolledForward, isCancelledActive);
         if (filters.urgency === 'needs_action') {
           if (urgency !== 'overdue' && urgency !== 'next_30') return false;
         } else if (urgency !== filters.urgency) {
@@ -199,7 +207,8 @@ export const CancellationRadar: React.FC = () => {
 
   // Urgent count for banner (strictly active with cancellation deadline within 30 days, not overdue)
   const urgentCount = contracts.filter((c) => {
-    if (c.status !== 'active') return false;
+    if (!isContractActive(c)) return false;
+    if (c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
     const deadline = getEffectiveCancellationDeadline(c);
     const days = getDaysRemaining(deadline);
     return days >= 0 && days <= 30;
@@ -316,6 +325,16 @@ export const CancellationRadar: React.FC = () => {
             >
               31–90 Days
             </button>
+            <button
+              onClick={() => setFilters({ urgency: 'later' })}
+              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+                filters.urgency === 'later'
+                  ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600'
+              }`}
+            >
+              &gt; 90 Days
+            </button>
           </div>
 
           {/* Status selector */}
@@ -326,6 +345,7 @@ export const CancellationRadar: React.FC = () => {
           >
             <option value="active">Active Contracts</option>
             <option value="all">All Statuses</option>
+            <option value="not started yet">Not Started Yet</option>
             <option value="cancelled">Cancelled</option>
             <option value="switching">Switching</option>
             <option value="expired">Expired</option>

@@ -25,6 +25,8 @@ import {
   getDaysRemaining,
   getTodayString,
   getUrgencyLevel,
+  isContractActive,
+  isContractCancelledActive,
   shiftDateByOneYear,
   shiftDateByPeriod,
 } from '../lib/dateUtils';
@@ -696,7 +698,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isEndDateOpenEnded: false,
       cancellationDeadline: newCancellationDeadline,
       isDeadlineOverridden: false,
-      status: 'active',
+      status: Boolean(newStartDate && newStartDate > todayStr) ? 'not started yet' : 'active',
       annualCost: source.annualCost,
       monthlyCost: source.monthlyCost,
       documentLinks: clonedDocumentLinks,
@@ -727,14 +729,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: nowIso,
     };
 
-    // If cancellation deadline is overdue or end date is already in the past:
-    // the old contract gets status 'expired' immediately.
-    // If rolled forward before cancellation deadline, the old contract remains 'active' until its end date is in the past.
-    const daysToCancellation = getDaysRemaining(source.cancellationDeadline);
-    const isOverdue = daysToCancellation < 0;
+    // A contract only gets status 'expired' when its end date has actually passed (< today).
+    // If the contract end date is in the future, it remains 'active' until its end date passes.
     const isPastEndDate = Boolean(source.endDate && source.endDate < todayStr);
-
-    const shouldExpireOldImmediately = isOverdue || isPastEndDate;
+    const shouldExpireOldImmediately = isPastEndDate;
 
     const updatedSource: Contract = {
       ...source,
@@ -824,7 +822,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cancellationDeadline: result.cancellationDeadline,
       isEndDateOpenEnded: false,
       isDeadlineOverridden: false,
-      status: 'active',
+      status: Boolean(result.startDate && result.startDate > todayStr) ? 'not started yet' : 'active',
       documentLinks: clonedDocumentLinks,
       priceHistory: [newPriceHistoryEntry, ...(source.priceHistory || [])],
       lastAutoExtendedAt: nowIso,
@@ -832,10 +830,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: nowIso,
     };
 
-    const daysToCancellation = getDaysRemaining(source.cancellationDeadline);
-    const isOverdue = daysToCancellation < 0;
     const isPastEndDate = Boolean(source.endDate && source.endDate < todayStr);
-    const shouldExpireOldImmediately = isOverdue || isPastEndDate;
+    const shouldExpireOldImmediately = isPastEndDate;
 
     const updatedSource: Contract = {
       ...source,
@@ -883,11 +879,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return rolledForward;
   };
 
-  // Automated background evaluation for contract auto-extension & status expiration:
-  // 1. Overdue cancellation deadline: automatically roll forward into a new active contract,
-  //    and mark the old contract as 'expired'.
-  // 2. Rolled-forward contracts: when a contract was manually rolled forward before cancellation deadline,
-  //    mark the old contract as 'expired' once its end date is in the past (earlier than today).
+  // Automated background evaluation for contract auto-extension & status lifecycle:
+  // 1. Contracts starting in the future get status 'not started yet'.
+  // 2. When their start date arrives (<= today), they automatically transition to 'active'.
+  // 3. Current contracts remain 'active' until their end date has passed (< today), at which point they become 'expired'.
+  // 4. Overdue cancellation deadline: automatically roll forward into a new contract (with status 'not started yet' if starting in the future).
   useEffect(() => {
     if (!contracts || contracts.length === 0) return;
 
@@ -895,7 +891,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nowIso = new Date().toISOString();
     const currentUid = auth.currentUser?.uid;
 
-    // Check A: Previously rolled forward contracts whose end date has passed (< today)
+    // Check A: Previously rolled forward contracts whose end date has passed (< today) -> expire
     const rolledForwardToExpire = contracts.filter((c) => {
       if (c.status !== 'active') return false;
       if (c.isEndDateOpenEnded) return false;
@@ -903,14 +899,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return Boolean(c.endDate && c.endDate < todayStr);
     });
 
-    // Check B: Active contracts whose cancellation deadline is overdue (< 0 days)
-    // and need automatic roll forward
+    // Check B: Prematurely expired contracts whose end date is still in the future (>= today) -> restore
+    const prematurelyExpired = contracts.filter((c) => {
+      if (c.status !== 'expired') return false;
+      if (c.isEndDateOpenEnded) return false;
+      return Boolean(c.endDate && c.endDate >= todayStr);
+    });
+
+    // Check C: Contracts marked 'active' whose start date is still in the future (> today) -> 'not started yet'
+    const futureContractsActive = contracts.filter((c) => {
+      if (c.status !== 'active') return false;
+      if (c.isEndDateOpenEnded) return false;
+      return Boolean(c.startDate && c.startDate > todayStr);
+    });
+
+    // Check D: Contracts with status 'not started yet' whose start date has arrived (<= today) -> transition to 'active'
+    const upcomingToActivate = contracts.filter((c) => {
+      if (c.status !== 'not started yet') return false;
+      return Boolean(!c.startDate || c.startDate <= todayStr);
+    });
+
+    // Check E: Active contracts whose cancellation deadline is overdue (< 0 days)
+    // that have NOT been rolled forward yet
     const overdueToAutoRollForward = contracts.filter((c) => {
       // Must be active and have a definitive end date / cancellation deadline
       if (c.status !== 'active' || c.isEndDateOpenEnded || !c.cancellationDeadline) return false;
 
-      // Skip if already being expired in group A
+      // Skip if already rolled forward to a successor contract
+      if (c.followedByContractId) return false;
+
+      // Skip if already marked in Checks A, C, D
       if (rolledForwardToExpire.some((rf) => rf.id === c.id)) return false;
+      if (futureContractsActive.some((fc) => fc.id === c.id)) return false;
 
       // Cancellation deadline has passed (past notice deadline)
       const days = getDaysRemaining(c.cancellationDeadline);
@@ -926,7 +946,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return isEnabled;
     });
 
-    if (rolledForwardToExpire.length === 0 && overdueToAutoRollForward.length === 0) {
+    if (
+      rolledForwardToExpire.length === 0 &&
+      prematurelyExpired.length === 0 &&
+      futureContractsActive.length === 0 &&
+      upcomingToActivate.length === 0 &&
+      overdueToAutoRollForward.length === 0
+    ) {
       return;
     }
 
@@ -942,7 +968,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     });
 
-    // Process B: Automatic roll forward for overdue contracts + mark old contract as expired
+    // Process B: Restore prematurely expired contracts whose end date is in the future
+    prematurelyExpired.forEach((c) => {
+      const isFutureStart = Boolean(c.startDate && c.startDate > todayStr);
+      updatedExistingMap.set(c.id, {
+        ...c,
+        status: isFutureStart ? 'not started yet' : 'active',
+        updatedAt: nowIso,
+      });
+    });
+
+    // Process C: Future start date contracts currently active -> 'not started yet'
+    futureContractsActive.forEach((c) => {
+      updatedExistingMap.set(c.id, {
+        ...c,
+        status: 'not started yet',
+        updatedAt: nowIso,
+      });
+    });
+
+    // Process D: Upcoming contracts whose start date has now arrived -> 'active'
+    upcomingToActivate.forEach((c) => {
+      updatedExistingMap.set(c.id, {
+        ...c,
+        status: 'active',
+        updatedAt: nowIso,
+      });
+    });
+
+    // Process E: Automatic roll forward for overdue contracts
     overdueToAutoRollForward.forEach((c, idx) => {
       const period = c.autoExtendPeriod || user.settings.defaultAutoExtendPeriod || { value: 1, unit: 'years' };
       const result = calculateAutoExtendedDates(c, period);
@@ -964,6 +1018,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         note: `Automatically rolled forward by ${periodLabel} (cancellation deadline passed without notice)`,
       };
 
+      const isFutureStart = Boolean(result.startDate && result.startDate > todayStr);
+
       const rolledForward: Contract = {
         ...c,
         id: newContractId,
@@ -973,7 +1029,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancellationDeadline: result.cancellationDeadline,
         isEndDateOpenEnded: false,
         isDeadlineOverridden: false,
-        status: 'active',
+        status: isFutureStart ? 'not started yet' : 'active',
         autoExtendEnabled: true,
         autoExtendPeriod: result.periodUsed,
         lastAutoExtendedAt: nowIso,
@@ -985,10 +1041,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       newRolledForwardContracts.push(rolledForward);
 
-      // Old contract gets status 'expired' and points to the new contract
+      // Old contract stays active if its end date is still in the future; otherwise expired
+      const isPastEndDate = Boolean(c.endDate && c.endDate < todayStr);
       updatedExistingMap.set(c.id, {
         ...c,
-        status: 'expired',
+        status: isPastEndDate ? 'expired' : 'active',
         followedByContractId: newContractId,
         updatedAt: nowIso,
       });
@@ -1015,8 +1072,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: `toast_auto_${Date.now()}`,
         message:
           overdueToAutoRollForward.length === 1
-            ? `Contract "${first.name}" cancellation deadline was overdue. Automatically rolled forward (+${periodLabel}) and old contract marked as expired.`
-            : `${overdueToAutoRollForward.length} contracts automatically rolled forward due to overdue cancellation deadlines. Previous contracts marked as expired.`,
+            ? `Contract "${first.name}" cancellation deadline was overdue. Successfully rolled forward (+${periodLabel}) for the next term. Current term remains active until ${formatDate(first.endDate)}.`
+            : `${overdueToAutoRollForward.length} contracts rolled forward for their next terms. Current terms remain active until their end dates.`,
         onUndo: () => {
           setContracts(contracts);
           saveContracts(contracts);
@@ -1053,6 +1110,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Mark contract status
   const markContractStatus = (id: string, status: ContractStatus, followedByContractId?: string) => {
+    const todayStr = getTodayString();
+    const nowIso = new Date().toISOString();
+    const target = contracts.find((c) => c.id === id);
+
+    if (status === 'cancelled') {
+      const isFutureEnd = Boolean(
+        target && !target.isEndDateOpenEnded && target.endDate && target.endDate >= todayStr
+      );
+      updateContract(id, {
+        status: 'cancelled',
+        cancelledAt: nowIso,
+        autoRenew: false,
+        autoExtendEnabled: false,
+        followedByContractId: followedByContractId || undefined,
+      });
+
+      if (target) {
+        const prevStatus = target.status;
+        const prevAutoRenew = target.autoRenew;
+        const prevAutoExtend = target.autoExtendEnabled;
+        setUndoToast({
+          id: `undo_cancel_${Date.now()}`,
+          message: isFutureEnd
+            ? `"${target.name}" marked as cancelled. It remains active and fulfilled until ${formatDate(target.endDate)}.`
+            : `"${target.name}" has been marked as cancelled.`,
+          onUndo: () => {
+            updateContract(id, {
+              status: prevStatus,
+              cancelledAt: undefined,
+              autoRenew: prevAutoRenew,
+              autoExtendEnabled: prevAutoExtend,
+            });
+            setUndoToast(null);
+          },
+        });
+      }
+      return;
+    }
+
+    if (status === 'active') {
+      updateContract(id, {
+        status: 'active',
+        cancelledAt: undefined,
+        followedByContractId: followedByContractId || undefined,
+      });
+      if (target) {
+        setUndoToast({
+          id: `undo_reactivate_${Date.now()}`,
+          message: `"${target.name}" has been restored to active status.`,
+          onUndo: () => {
+            markContractStatus(id, 'cancelled');
+            setUndoToast(null);
+          },
+        });
+      }
+      return;
+    }
+
     updateContract(id, {
       status,
       followedByContractId: followedByContractId || undefined,

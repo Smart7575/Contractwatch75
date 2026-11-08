@@ -167,7 +167,7 @@ export function parseCSVToContracts(
     const monthlyCost = Number((annualCost / 12).toFixed(2));
 
     const statusVal = statusIdx !== -1 && cols[statusIdx] ? cols[statusIdx].toLowerCase().trim() : 'active';
-    const status = ['active', 'cancelled', 'expired', 'switching'].includes(statusVal)
+    const status = ['active', 'cancelled', 'expired', 'switching', 'not started yet'].includes(statusVal)
       ? (statusVal as any)
       : 'active';
 
