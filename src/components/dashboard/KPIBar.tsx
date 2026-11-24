@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency, getDaysRemaining, getEffectiveCancellationDeadline, isContractActive } from '../../lib/dateUtils';
+import { formatCurrency, getContractUrgency, isContractActive } from '../../lib/dateUtils';
 import { FileText, ShieldAlert, Wallet } from 'lucide-react';
 
 export const KPIBar: React.FC = () => {
@@ -11,26 +11,28 @@ export const KPIBar: React.FC = () => {
   const totalMonthlyCost = totalAnnualCost / 12;
 
   // Action required: active contracts where cancellation deadline is within the next 30 days (0 <= days <= 30).
-  // Overdue contracts and already-cancelled contracts are excluded.
-  const actionRequiredContracts = activeContracts.filter((c) => {
-    if (c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
-    const deadline = getEffectiveCancellationDeadline(c);
-    const days = getDaysRemaining(deadline);
-    return days >= 0 && days <= 30;
-  });
+  // Overdue, rolled-forward, already-cancelled, and rolling monthly contracts are excluded.
+  const actionRequiredContracts = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'next_30'
+  );
 
-  const overdueContracts = activeContracts.filter((c) => {
-    if (c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
-    const deadline = getEffectiveCancellationDeadline(c);
-    const days = getDaysRemaining(deadline);
-    return days < 0;
-  });
+  const overdueContracts = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'overdue'
+  );
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-5">
       {/* KPI 1: Active Contracts */}
       <button
-        onClick={() => setFilters({ status: 'active', urgency: 'all' })}
+        onClick={() =>
+          setFilters({
+            status: 'active',
+            urgency: 'all',
+            categoryId: 'all',
+            coverageType: 'all',
+            search: '',
+          })
+        }
         className={`p-3 sm:p-4 rounded-xl text-left border transition-all cursor-pointer ${
           filters.status === 'active' && filters.urgency === 'all'
             ? 'bg-white dark:bg-slate-900 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
@@ -65,7 +67,15 @@ export const KPIBar: React.FC = () => {
 
       {/* KPI 3: Action Required Now (0 <= days <= 30, strictly not overdue) */}
       <button
-        onClick={() => setFilters({ urgency: 'next_30', status: 'active' })}
+        onClick={() =>
+          setFilters({
+            urgency: 'next_30',
+            status: 'active',
+            categoryId: 'all',
+            coverageType: 'all',
+            search: '',
+          })
+        }
         className={`p-3 sm:p-4 rounded-xl text-left border transition-all cursor-pointer ${
           filters.urgency === 'next_30'
             ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/20'

@@ -13,6 +13,7 @@ import {
   getEffectiveCancellationDeadline,
   isContractRolledForward,
   isContractCancelledActive,
+  formatPlannedPaymentSchedule,
 } from '../../lib/dateUtils';
 import {
   AlertTriangle,
@@ -60,8 +61,8 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
   const daysRemaining = getDaysRemaining(effectiveDeadline);
   const isRolledForward = isContractRolledForward(contract, contracts);
   const isCancelledActive = isContractCancelledActive(contract);
-  const urgency = getUrgencyLevel(effectiveDeadline, contract.status, isRolledForward, isCancelledActive);
-  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status, isRolledForward, isCancelledActive);
+  const urgency = getUrgencyLevel(effectiveDeadline, contract.status, isRolledForward, isCancelledActive, contract.isEndDateOpenEnded);
+  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status, isRolledForward, isCancelledActive, contract.isEndDateOpenEnded);
 
   const category = categories.find((c) => c.id === contract.categoryId);
 
@@ -90,14 +91,14 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
     >
       {/* Top Header: Category & Urgency Indicator */}
       <div>
-        <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-start justify-between gap-2 mb-2">
           {/* Unboxed metadata: Category · Subcategory */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 truncate">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 dark:text-slate-400 min-w-0 flex-1 pt-1">
             <span className="font-medium text-slate-700 dark:text-slate-300">
               {category?.name || 'General'}
             </span>
             <span aria-hidden="true">·</span>
-            <span className="truncate">{contract.subcategory}</span>
+            <span className="truncate max-w-full">{contract.subcategory}</span>
             {contract.isDemo && (
               <>
                 <span aria-hidden="true">·</span>
@@ -155,10 +156,10 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
           </div>
 
           {/* Quick 3-dot dropdown menu */}
-          <div className="relative">
+          <div className="relative shrink-0 -mr-2 sm:mr-0">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              className="min-h-[44px] min-w-[44px] sm:min-h-[32px] sm:min-w-[32px] flex items-center justify-center p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               aria-label="More options"
             >
               <MoreVertical className="w-4 h-4" />
@@ -295,32 +296,40 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
         </div>
 
         {/* Financial info */}
-        <div className="mt-3 flex items-baseline justify-between text-xs border-t border-slate-100 dark:border-slate-800/60 pt-3">
-          <span className="text-slate-500 dark:text-slate-400">Annual cost:</span>
-          <div className="text-right">
-            <span className="text-sm font-bold text-slate-900 dark:text-white font-mono tabular-nums">
-              {formatCurrency(contract.annualCost, user.settings.currency)}
-            </span>
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-1 font-mono tabular-nums">
-              ({formatCurrency(contract.monthlyCost, user.settings.currency)}/mo)
+        <div className="mt-3 border-t border-slate-100 dark:border-slate-800/60 pt-3 space-y-1">
+          <div className="flex items-baseline justify-between text-xs">
+            <span className="text-slate-500 dark:text-slate-400">Annual cost:</span>
+            <div className="text-right">
+              <span className="text-sm font-bold text-slate-900 dark:text-white font-mono tabular-nums">
+                {formatCurrency(contract.annualCost, user.settings.currency)}
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-1 font-mono tabular-nums">
+                ({formatCurrency(contract.monthlyCost, user.settings.currency)}/mo)
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+            <span>Planned payment:</span>
+            <span className="font-medium text-slate-700 dark:text-slate-300">
+              {formatPlannedPaymentSchedule(contract)}
             </span>
           </div>
         </div>
       </div>
 
       {/* Card Footer Actions: Open Dossier, Snooze, Mark Cancelled, Compare */}
-      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-1 text-xs">
-        <div className="flex items-center gap-1.5">
+      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setSelectedContractId(contract.id)}
-            className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition cursor-pointer"
+            className="min-h-[44px] sm:min-h-[32px] inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition cursor-pointer"
           >
             <span>Dossier</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => rollForwardContract(contract.id)}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-200/60 dark:border-indigo-800/60 transition cursor-pointer"
+            className="min-h-[44px] sm:min-h-[28px] inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-200/60 dark:border-indigo-800/60 transition cursor-pointer"
             title="Roll forward contract (+1 year term, keep documents)"
           >
             <RotateCw className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
@@ -333,7 +342,7 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract }) => {
           <div className="relative">
             <button
               onClick={() => setIsSnoozeOpen(!isSnoozeOpen)}
-              className="p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              className="min-h-[44px] min-w-[44px] sm:min-h-[32px] sm:min-w-[32px] flex items-center justify-center p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               title="Snooze reminder"
             >
               <BellOff className="w-3.5 h-3.5" />

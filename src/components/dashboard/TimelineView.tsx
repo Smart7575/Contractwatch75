@@ -5,9 +5,11 @@ import {
   formatCurrency,
   formatDate,
   getDaysRemaining,
-  getUrgencyLevel,
+  getContractUrgency,
   getUrgencyMetadata,
   getEffectiveCancellationDeadline,
+  isContractRolledForward,
+  isContractCancelledActive,
 } from '../../lib/dateUtils';
 import {
   Calendar,
@@ -24,7 +26,7 @@ interface TimelineViewProps {
 }
 
 export const TimelineView: React.FC<TimelineViewProps> = ({ contracts }) => {
-  const { setSelectedContractId, user, categories } = useApp();
+  const { setSelectedContractId, contracts: allContracts, user, categories } = useApp();
 
   // Sort chronologically by effective cancellation deadline
   const sorted = [...contracts].sort((a, b) => {
@@ -63,8 +65,17 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ contracts }) => {
             {groupContracts.map((contract) => {
               const deadline = getEffectiveCancellationDeadline(contract);
               const days = getDaysRemaining(deadline);
-              const urgency = getUrgencyLevel(deadline, contract.status);
-              const urgencyMeta = getUrgencyMetadata(urgency, days);
+              const isRolledForward = isContractRolledForward(contract, allContracts);
+              const isCancelledActive = isContractCancelledActive(contract);
+              const urgency = getContractUrgency(contract, allContracts);
+              const urgencyMeta = getUrgencyMetadata(
+                urgency,
+                days,
+                contract.status,
+                isRolledForward,
+                isCancelledActive,
+                contract.isEndDateOpenEnded
+              );
               const category = categories.find((c) => c.id === contract.categoryId);
 
               const UrgencyIcon =

@@ -4,7 +4,7 @@ import { ContractCard } from '../contracts/ContractCard';
 import { TableView } from './TableView';
 import { TimelineView } from './TimelineView';
 import { RadarKanban } from './RadarKanban';
-import { getDaysRemaining, getUrgencyLevel, getEffectiveCancellationDeadline, isContractRolledForward, isContractActive, isContractCancelledActive } from '../../lib/dateUtils';
+import { getContractUrgency, getEffectiveCancellationDeadline, isContractActive } from '../../lib/dateUtils';
 import {
   Search,
   LayoutGrid,
@@ -24,7 +24,9 @@ import {
   Tablet,
   CheckCircle2,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { exportPDFReport } from '../../lib/pdfReportGenerator';
+import { shareExistingBlob } from '../../lib/fileExportHelper';
 
 export const CancellationRadar: React.FC = () => {
   const {
@@ -102,14 +104,14 @@ export const CancellationRadar: React.FC = () => {
         });
       }
 
-      if (navigator.share && currentBlob) {
-        const file = new File([currentBlob], filename, { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-          });
+      if (currentBlob && filename) {
+        const shared = await shareExistingBlob(
+          currentBlob,
+          filename,
+          'application/pdf'
+        );
+        if (shared) {
           setStatusMessage('Saved / shared via iOS!');
-          return;
         }
       }
     } catch (e: any) {
@@ -151,10 +153,7 @@ export const CancellationRadar: React.FC = () => {
 
       // Urgency filter
       if (filters.urgency !== 'all') {
-        const deadline = getEffectiveCancellationDeadline(c);
-        const isRolledForward = isContractRolledForward(c, contracts);
-        const isCancelledActive = isContractCancelledActive(c);
-        const urgency = getUrgencyLevel(deadline, c.status, isRolledForward, isCancelledActive);
+        const urgency = getContractUrgency(c, contracts);
         if (filters.urgency === 'needs_action') {
           if (urgency !== 'overdue' && urgency !== 'next_30') return false;
         } else if (urgency !== filters.urgency) {
@@ -205,14 +204,10 @@ export const CancellationRadar: React.FC = () => {
     });
   }, [contracts, categories, filters]);
 
-  // Urgent count for banner (strictly active with cancellation deadline within 30 days, not overdue)
-  const urgentCount = contracts.filter((c) => {
-    if (!isContractActive(c)) return false;
-    if (c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
-    const deadline = getEffectiveCancellationDeadline(c);
-    const days = getDaysRemaining(deadline);
-    return days >= 0 && days <= 30;
-  }).length;
+  // Urgent count for banner (strictly active with cancellation deadline within 30 days, not overdue, not rolled forward, not rolling monthly)
+  const urgentCount = contracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'next_30'
+  ).length;
 
   return (
     <section aria-label="Cancellation Radar">
@@ -233,7 +228,15 @@ export const CancellationRadar: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => setFilters({ urgency: 'next_30', status: 'active' })}
+            onClick={() =>
+              setFilters({
+                urgency: 'next_30',
+                status: 'active',
+                categoryId: 'all',
+                coverageType: 'all',
+                search: '',
+              })
+            }
             className="px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors cursor-pointer shrink-0"
           >
             Review Urgent Contracts ({urgentCount})
@@ -262,19 +265,20 @@ export const CancellationRadar: React.FC = () => {
       {/* Control Bar: Search, Urgency Tabs, View Switcher */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-5">
         {/* Search Input */}
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1 min-w-0 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={filters.search}
             onChange={(e) => setFilters({ search: e.target.value })}
             placeholder="Filter contracts by name, category, or vendor..."
-            className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            className="w-full min-w-0 pl-9 pr-10 py-2 min-h-[44px] sm:min-h-[38px] text-base sm:text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
           />
           {filters.search && (
             <button
               onClick={() => setFilters({ search: '' })}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 min-h-[44px] min-w-[44px] sm:min-h-[32px] sm:min-w-[32px] flex items-center justify-center"
+              aria-label="Clear search"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -287,7 +291,7 @@ export const CancellationRadar: React.FC = () => {
           <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl shrink-0">
             <button
               onClick={() => setFilters({ urgency: 'all' })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
                 filters.urgency === 'all'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -297,7 +301,7 @@ export const CancellationRadar: React.FC = () => {
             </button>
             <button
               onClick={() => setFilters({ urgency: 'overdue' })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
                 filters.urgency === 'overdue'
                   ? 'bg-rose-600 text-white shadow-2xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-rose-600'
@@ -307,7 +311,7 @@ export const CancellationRadar: React.FC = () => {
             </button>
             <button
               onClick={() => setFilters({ urgency: 'next_30' })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
                 filters.urgency === 'next_30'
                   ? 'bg-amber-500 text-white shadow-2xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-amber-600'
@@ -317,7 +321,7 @@ export const CancellationRadar: React.FC = () => {
             </button>
             <button
               onClick={() => setFilters({ urgency: '31_90' })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
                 filters.urgency === '31_90'
                   ? 'bg-yellow-600 text-white shadow-2xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-yellow-600'
@@ -327,7 +331,7 @@ export const CancellationRadar: React.FC = () => {
             </button>
             <button
               onClick={() => setFilters({ urgency: 'later' })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] sm:min-h-[32px] px-2.5 py-1 text-xs font-medium rounded-lg transition-colors cursor-pointer ${
                 filters.urgency === 'later'
                   ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600'
@@ -341,7 +345,7 @@ export const CancellationRadar: React.FC = () => {
           <select
             value={filters.status}
             onChange={(e) => setFilters({ status: e.target.value })}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-medium focus:outline-hidden"
+            className="min-h-[44px] sm:min-h-[36px] min-w-0 px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-medium focus:outline-hidden shrink-0"
           >
             <option value="active">Active Contracts</option>
             <option value="all">All Statuses</option>
@@ -355,7 +359,7 @@ export const CancellationRadar: React.FC = () => {
           <select
             value={filters.coverageType || 'all'}
             onChange={(e) => setFilters({ coverageType: e.target.value })}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-medium focus:outline-hidden"
+            className="min-h-[44px] sm:min-h-[36px] min-w-0 px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-medium focus:outline-hidden shrink-0"
             aria-label="Filter scope"
           >
             <option value="all">All Scopes</option>
@@ -367,7 +371,7 @@ export const CancellationRadar: React.FC = () => {
           <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl shrink-0">
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-[34px] flex items-center justify-center p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === 'table'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
@@ -378,7 +382,7 @@ export const CancellationRadar: React.FC = () => {
             </button>
             <button
               onClick={() => setViewMode('cards')}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-[34px] flex items-center justify-center p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === 'cards'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
@@ -389,7 +393,7 @@ export const CancellationRadar: React.FC = () => {
             </button>
             <button
               onClick={() => setViewMode('timeline')}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-[34px] flex items-center justify-center p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === 'timeline'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
@@ -400,7 +404,7 @@ export const CancellationRadar: React.FC = () => {
             </button>
             <button
               onClick={() => setViewMode('kanban')}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              className={`min-h-[44px] min-w-[44px] sm:min-h-[34px] sm:min-w-[34px] flex items-center justify-center p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === 'kanban'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
@@ -415,7 +419,7 @@ export const CancellationRadar: React.FC = () => {
           <button
             onClick={handleExportPDF}
             disabled={isGeneratingPDF}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50"
+            className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50"
             title="Export Radar Overview & Portfolio PDF report (Landscape)"
           >
             {isGeneratingPDF ? (
@@ -499,49 +503,52 @@ export const CancellationRadar: React.FC = () => {
 
       {/* iPhone & iPad / Tablet Native PDF Viewer & Share Modal */}
       {isIpadViewerOpen && pdfPreviewData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[94vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-[calc(0.5rem+env(safe-area-inset-bottom))] pl-[calc(0.5rem+env(safe-area-inset-left))] pr-[calc(0.5rem+env(safe-area-inset-right))] bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
             {/* Modal Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
                   <Tablet className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    PDF Report Dossier (Landscape — iPhone, iPad & Desktop)
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                    PDF Report Dossier
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Radar Overview contract roster as first page · Identical landscape layout across all devices
+                    Landscape report layout across iPhone, iPad &amp; desktop
                   </p>
                 </div>
               </div>
 
               {/* Action buttons on header */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   onClick={handleShareOnIpad}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                  className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
                   title="Open iOS share sheet (Save to Files / AirDrop / Print)"
                 >
                   <Share2 className="w-3.5 h-3.5" />
                   <span>Save to Files / Share</span>
                 </button>
 
-                <a
-                  href={pdfPreviewData.blobUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
-                  title="Open in a separate Safari window"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open in Safari</span>
-                </a>
+                {!Capacitor.isNativePlatform() && (
+                  <a
+                    href={pdfPreviewData.blobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
+                    title="Open in a separate Safari window"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open in Safari</span>
+                  </a>
+                )}
 
                 <button
                   onClick={() => setIsIpadViewerOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                  className="min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                  aria-label="Close PDF preview"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -549,17 +556,17 @@ export const CancellationRadar: React.FC = () => {
             </div>
 
             {/* Modal Body: Embedded PDF View & Guidance */}
-            <div className="p-4 sm:p-5 flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto">
+            <div className="p-4 sm:p-5 pb-[calc(1rem+env(safe-area-inset-bottom))] flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto">
               <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 text-xs text-indigo-900 dark:text-indigo-200 flex items-start gap-2.5">
                 <Share2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-semibold">iPhone & iPad Instructions:</strong>{' '}
-                  This report is created with the exact same vector landscape format and layout. The first page presents the full Radar Overview contract roster, followed by the detailed portfolio subreport. Tap <span className="font-semibold text-indigo-700 dark:text-indigo-300">"Save to Files / Share"</span> above to save directly into Files (iCloud Drive / On My Device), share via AirDrop, or print via AirPrint.
+                  <strong className="font-semibold">iPhone &amp; iPad Instructions:</strong>{' '}
+                  This report is created with the exact same vector landscape format and layout. Tap <span className="font-semibold text-indigo-700 dark:text-indigo-300">&quot;Save to Files / Share&quot;</span> above to save directly into Files, share via AirDrop, or print via AirPrint.
                 </div>
               </div>
 
               {/* Embedded PDF iframe */}
-              <div className="flex-1 w-full min-h-[460px] sm:min-h-[540px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 shadow-inner">
+              <div className="flex-1 w-full min-h-[260px] sm:min-h-[480px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 shadow-inner">
                 <iframe
                   src={pdfPreviewData.blobUrl}
                   title="ContractWatch Landscape PDF Report Preview"
@@ -567,17 +574,27 @@ export const CancellationRadar: React.FC = () => {
                 />
               </div>
 
-              {/* Direct fallback download link */}
-              <div className="flex items-center justify-between pt-2 text-xs text-slate-500">
-                <span>Filename: <code className="font-mono text-indigo-600 dark:text-indigo-400">{pdfPreviewData.filename}</code></span>
-                <a
-                  href={pdfPreviewData.blobUrl}
-                  download={pdfPreviewData.filename}
-                  className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
-                >
-                  <FileDown className="w-3.5 h-3.5" />
-                  <span>Direct Download Link</span>
-                </a>
+              {/* Direct fallback download / native share */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-slate-500">
+                <span className="truncate max-w-full">Filename: <code className="font-mono text-indigo-600 dark:text-indigo-400">{pdfPreviewData.filename}</code></span>
+                {Capacitor.isNativePlatform() ? (
+                  <button
+                    onClick={handleShareOnIpad}
+                    className="min-h-[44px] sm:min-h-[32px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share PDF File</span>
+                  </button>
+                ) : (
+                  <a
+                    href={pdfPreviewData.blobUrl}
+                    download={pdfPreviewData.filename}
+                    className="min-h-[44px] sm:min-h-[32px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
+                  >
+                    <FileDown className="w-3.5 h-3.5" />
+                    <span>Direct Download Link</span>
+                  </a>
+                )}
               </div>
             </div>
           </div>

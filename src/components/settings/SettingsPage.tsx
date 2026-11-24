@@ -899,7 +899,7 @@ export const SettingsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={logout}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900/60 transition cursor-pointer shadow-2xs"
+                className="min-h-[44px] sm:min-h-[38px] inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900/60 transition cursor-pointer shadow-2xs"
                 title="Log Out of your account"
               >
                 <LogOut className="w-4 h-4" />
@@ -918,7 +918,7 @@ export const SettingsPage: React.FC = () => {
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-2 py-2 px-3.5 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                className={`min-h-[44px] sm:min-h-[38px] flex items-center gap-2 py-2 px-3.5 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                   isActive
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
@@ -933,13 +933,13 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       {/* Tab Content Container */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xs">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-8 shadow-xs">
         {/* Profile & Regional Tab */}
         {activeTab === 'profile' && (
           <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                Personal Profile & Locale
+                Personal Profile &amp; Locale
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 Set your primary currency symbol, timezone, and visual appearance.
@@ -947,7 +947,7 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Display Name
                 </label>
@@ -956,26 +956,26 @@ export const SettingsPage: React.FC = () => {
                   value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   onBlur={handleNameBlur}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
+                  className="w-full min-w-0 min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white focus:outline-indigo-500"
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Account Email
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap sm:flex-nowrap gap-2 min-w-0">
                   <input
                     type="email"
                     disabled
                     value={user.email}
-                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50 text-xs text-slate-500 cursor-not-allowed"
+                    className="flex-1 min-w-0 min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50 text-base sm:text-xs text-slate-500 cursor-not-allowed"
                   />
                   {isFirebaseAuthenticated && (
                     <button
                       type="button"
                       onClick={logout}
-                      className="px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/60 transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                      className="min-h-[44px] sm:min-h-[38px] px-3.5 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/60 transition cursor-pointer flex items-center gap-1.5 shrink-0"
                       title="Log Out"
                     >
                       <LogOut className="w-3.5 h-3.5" />
@@ -985,7 +985,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="min-w-0 p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
                     Primary Currency
@@ -996,11 +996,11 @@ export const SettingsPage: React.FC = () => {
                 </div>
 
                 {/* Primary Currency Select Dropdown */}
-                <div>
+                <div className="min-w-0">
                   <select
                     value={activeCurrency}
                     onChange={(e) => handleSelectCurrency(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-medium"
+                    className="w-full min-w-0 min-h-[44px] sm:min-h-[40px] px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-medium"
                   >
                     <optgroup label="Standard Presets">
                       <option value="USD">USD ($) — United States Dollar (Default)</option>
@@ -1030,11 +1030,11 @@ export const SettingsPage: React.FC = () => {
                   )}
 
                   <div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                         Additional Currencies (Max 3 Letters)
                       </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
+                      <span className="text-[10px] text-slate-400 font-mono shrink-0">
                         {customCurrencies.length} custom {customCurrencies.length === 1 ? 'currency' : 'currencies'}
                       </span>
                     </div>
@@ -1045,8 +1045,8 @@ export const SettingsPage: React.FC = () => {
 
                   {/* Add Input row */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="relative">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative min-w-0">
                         <input
                           type="text"
                           maxLength={3}
@@ -1063,7 +1063,7 @@ export const SettingsPage: React.FC = () => {
                             }
                           }}
                           placeholder="CAD"
-                          className="w-28 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-xs font-mono font-bold uppercase tracking-wider text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                          className="w-28 min-w-0 min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-base sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-2xs"
                         />
                       </div>
                       <button
@@ -1165,7 +1165,7 @@ export const SettingsPage: React.FC = () => {
                             return (
                               <div
                                 key={c}
-                                className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-500 shadow-2xs animate-in fade-in"
+                                className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-500 shadow-2xs animate-in fade-in"
                               >
                                 <span className="text-[11px] text-slate-400">Edit code:</span>
                                 <input
@@ -1185,14 +1185,14 @@ export const SettingsPage: React.FC = () => {
                                     }
                                   }}
                                   autoFocus
-                                  className="w-20 px-2 py-1 text-xs font-mono font-bold uppercase rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 focus:outline-hidden"
+                                  className="w-24 min-w-0 min-h-[44px] sm:min-h-[32px] px-2 py-1 text-base sm:text-xs font-mono font-bold uppercase rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 focus:outline-hidden"
                                 />
                                 <span className="text-[10px] text-slate-400 font-mono">(max 3 letters)</span>
                                 <div className="ml-auto flex items-center gap-1">
                                   <button
                                     type="button"
                                     onClick={handleSaveEditCurrency}
-                                    className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 cursor-pointer"
+                                    className="min-h-[44px] min-w-[44px] sm:min-h-[30px] sm:min-w-[30px] flex items-center justify-center p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 cursor-pointer"
                                     title="Save changes"
                                   >
                                     <Check className="w-3.5 h-3.5" />
@@ -1200,7 +1200,7 @@ export const SettingsPage: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => setEditingCurrency(null)}
-                                    className="p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    className="min-h-[44px] min-w-[44px] sm:min-h-[30px] sm:min-w-[30px] flex items-center justify-center p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
                                     title="Cancel"
                                   >
                                     <X className="w-3.5 h-3.5" />
@@ -1305,20 +1305,21 @@ export const SettingsPage: React.FC = () => {
                 </div>
 
                 {/* Quick search filter for curated timezones */}
-                <div className="relative mb-2">
+                <div className="relative mb-2 min-w-0">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={timezoneSearch}
                     onChange={(e) => setTimezoneSearch(e.target.value)}
                     placeholder="Quick filter (e.g. Amsterdam, Paris, New York, Tokyo, London)..."
-                    className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-colors"
+                    className="w-full min-w-0 min-h-[44px] sm:min-h-[36px] pl-8 pr-9 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-base sm:text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-indigo-500 focus:bg-white dark:focus:bg-slate-800 transition-colors"
                   />
                   {timezoneSearch && (
                     <button
                       type="button"
                       onClick={() => setTimezoneSearch('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+                      className="min-h-[44px] min-w-[44px] sm:min-h-[28px] sm:min-w-[28px] flex items-center justify-center absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                      aria-label="Clear timezone filter"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -1333,7 +1334,7 @@ export const SettingsPage: React.FC = () => {
                     updateUserSettings({ timezone: val });
                     showSavedIndicator();
                   }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-sans"
+                  className="w-full min-w-0 min-h-[44px] sm:min-h-[40px] px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white focus:outline-indigo-500 font-sans"
                 >
                   {filteredTimezones ? (
                     <>
@@ -1663,23 +1664,23 @@ export const SettingsPage: React.FC = () => {
             {/* Quick Add Subcategory Card & Search Bar */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Search filter */}
-              <div className="relative flex items-center">
+              <div className="relative flex items-center min-w-0">
                 <Search className="w-4 h-4 absolute left-3 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
                   value={categorySearchQuery}
                   onChange={(e) => setCategorySearchQuery(e.target.value)}
                   placeholder="Filter by category or subcategory..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                  className="w-full min-w-0 min-h-[44px] sm:min-h-[38px] pl-9 pr-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
               {/* Quick Add Subcategory across categories */}
-              <div className="md:col-span-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div className="md:col-span-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl min-w-0">
                 <select
                   value={selectedCatId}
                   onChange={(e) => setSelectedCatId(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-medium"
+                  className="w-full sm:w-auto min-w-0 min-h-[44px] sm:min-h-[36px] px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white font-medium"
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -1687,7 +1688,7 @@ export const SettingsPage: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <div className="flex-1 flex items-center gap-2">
+                <div className="flex-1 flex items-center gap-2 min-w-0">
                   <input
                     type="text"
                     value={newSubcatName}
@@ -1699,13 +1700,13 @@ export const SettingsPage: React.FC = () => {
                       }
                     }}
                     placeholder="Quickly add subcategory..."
-                    className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                    className="flex-1 min-w-0 min-h-[44px] sm:min-h-[36px] px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                   />
                   <button
                     type="button"
                     onClick={() => handleAddSubcategory(selectedCatId)}
                     disabled={!newSubcatName.trim()}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs transition-colors shrink-0"
+                    className="min-h-[44px] sm:min-h-[36px] px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs transition-colors shrink-0"
                   >
                     + Add
                   </button>
@@ -1837,12 +1838,12 @@ export const SettingsPage: React.FC = () => {
                                       }
                                     }}
                                     autoFocus
-                                    className="px-1.5 py-0.5 text-xs bg-transparent text-slate-900 dark:text-white focus:outline-hidden w-28 font-medium"
+                                    className="px-1.5 py-0.5 text-base sm:text-xs bg-transparent text-slate-900 dark:text-white focus:outline-hidden w-28 min-w-0 font-medium"
                                   />
                                   <button
                                     type="button"
                                     onClick={handleSaveInlineRenameSubcat}
-                                    className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer"
+                                    className="min-h-[44px] min-w-[44px] sm:min-h-[28px] sm:min-w-[28px] flex items-center justify-center p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 cursor-pointer"
                                     title="Save & apply to contracts"
                                   >
                                     <Check className="w-3.5 h-3.5" />
@@ -1850,7 +1851,7 @@ export const SettingsPage: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => setInlineEditingSubcat(null)}
-                                    className="p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    className="min-h-[44px] min-w-[44px] sm:min-h-[28px] sm:min-w-[28px] flex items-center justify-center p-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
                                     title="Cancel"
                                   >
                                     <X className="w-3.5 h-3.5" />
@@ -1888,7 +1889,7 @@ export const SettingsPage: React.FC = () => {
                                     })
                                   }
                                   title={`Rename "${sub}" (cascades to ${count} contract(s))`}
-                                  className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition cursor-pointer ml-0.5"
+                                  className="w-6 h-6 sm:w-4 sm:h-4 rounded flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition cursor-pointer ml-0.5"
                                 >
                                   <Pencil className="w-3 h-3" />
                                 </button>
@@ -1899,7 +1900,7 @@ export const SettingsPage: React.FC = () => {
                                     type="button"
                                     onClick={() => handleRemoveSubcatWithCascade(cat.id, sub)}
                                     title={`Delete "${sub}"`}
-                                    className="w-4 h-4 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition ml-0.5 cursor-pointer"
+                                    className="w-6 h-6 sm:w-4 sm:h-4 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition ml-0.5 cursor-pointer"
                                   >
                                     &times;
                                   </button>
@@ -1910,7 +1911,7 @@ export const SettingsPage: React.FC = () => {
                         </div>
 
                         {/* Inline Quick Add for this specific category */}
-                        <div className="pt-1.5 flex items-center gap-2 max-w-sm">
+                        <div className="pt-1.5 flex items-center gap-2 max-w-sm min-w-0">
                           <input
                             type="text"
                             value={quickSubcatByCatId[cat.id] || ''}
@@ -1927,13 +1928,13 @@ export const SettingsPage: React.FC = () => {
                               }
                             }}
                             placeholder={`+ Add subcategory to ${cat.name}...`}
-                            className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                            className="flex-1 min-w-0 min-h-[44px] sm:min-h-[34px] px-2.5 py-1 text-base sm:text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                           />
                           <button
                             type="button"
                             onClick={() => handleQuickAddSubcatToCat(cat.id)}
                             disabled={!(quickSubcatByCatId[cat.id] || '').trim()}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-600 hover:text-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 rounded-lg text-xs font-semibold cursor-pointer transition shadow-2xs"
+                            className="min-h-[44px] sm:min-h-[34px] px-2.5 py-1 bg-slate-100 hover:bg-indigo-600 hover:text-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 rounded-lg text-xs font-semibold cursor-pointer transition shadow-2xs shrink-0"
                           >
                             + Add
                           </button>
@@ -2412,18 +2413,18 @@ export const SettingsPage: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Type <strong>DELETE</strong> to confirm permanent erasure:
               </label>
-              <div className="flex gap-2 max-w-md">
+              <div className="flex flex-col sm:flex-row gap-2 max-w-md min-w-0">
                 <input
                   type="text"
                   value={deleteConfirmationText}
                   onChange={(e) => setDeleteConfirmationText(e.target.value)}
                   placeholder="Type DELETE"
-                  className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-xs text-rose-600 uppercase focus:outline-rose-500"
+                  className="flex-1 min-w-0 min-h-[44px] sm:min-h-[38px] px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-base sm:text-xs text-rose-600 uppercase focus:outline-rose-500"
                 />
                 <button
                   disabled={deleteConfirmationText.trim() !== 'DELETE' || isDeletingAccount}
                   onClick={handleDeleteAccountConfirm}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:hover:bg-rose-600 text-white text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+                  className="min-h-[44px] sm:min-h-[38px] px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:hover:bg-rose-600 text-white text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
                 >
                   <span>{isDeletingAccount ? 'Deleting account...' : 'Confirm Erasure'}</span>
                 </button>

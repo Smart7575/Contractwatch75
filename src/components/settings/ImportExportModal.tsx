@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { downloadICS } from '../../lib/icsExport';
+import { exportFile } from '../../lib/fileExportHelper';
 import {
   exportContractsToCSV,
   getCSVTemplateString,
@@ -44,7 +45,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   if (!isOpen) return null;
 
   // JSON Export
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     const exportBundle = {
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
@@ -57,43 +58,34 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       contracts,
     };
     const jsonStr = JSON.stringify(exportBundle, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `contractwatch-export-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    await exportFile({
+      filename: `contractwatch-export-${new Date().toISOString().split('T')[0]}.json`,
+      content: jsonStr,
+      mimeType: 'application/json',
+      title: 'ContractWatch75 JSON Backup',
+    });
   };
 
   // CSV Export
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     const csvStr = exportContractsToCSV(contracts);
-    const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `contractwatch-contracts-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    await exportFile({
+      filename: `contractwatch-contracts-${new Date().toISOString().split('T')[0]}.csv`,
+      content: csvStr,
+      mimeType: 'text/csv;charset=utf-8;',
+      title: 'ContractWatch75 CSV Export',
+    });
   };
 
   // Download sample CSV template
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     const template = getCSVTemplateString();
-    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'contractwatch-template.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    await exportFile({
+      filename: 'contractwatch-template.csv',
+      content: template,
+      mimeType: 'text/csv;charset=utf-8;',
+      title: 'ContractWatch75 CSV Template',
+    });
   };
 
   // Handle file upload (JSON or CSV)
@@ -156,33 +148,34 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-      <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] bg-black/60 backdrop-blur-xs overflow-y-auto">
+      <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+        <div className="flex items-center justify-between gap-2 px-5 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
               <Download className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Data Portability & Calendar Sync
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                Data Portability &amp; Calendar Sync
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 truncate">
                 Export, backup, calendar subscription, and batch import.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 overflow-y-auto text-xs sm:text-sm">
+        <div className="flex-1 min-h-0 p-5 sm:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] space-y-6 overflow-y-auto text-xs sm:text-sm">
           {importFeedback && (
             <div
               className={`p-4 rounded-2xl flex items-center gap-3 ${
@@ -243,8 +236,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
           {/* Section 2: Import */}
           <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   Import Contracts (JSON or CSV)
                 </h4>
@@ -254,14 +247,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               </div>
               <button
                 onClick={handleDownloadTemplate}
-                className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
+                className="min-h-[36px] text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer shrink-0"
               >
                 Download CSV Template
               </button>
             </div>
 
             {/* Merge vs Replace Mode */}
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 text-xs">
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 text-xs">
               <span className="font-semibold text-slate-700 dark:text-slate-300">Import Mode:</span>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input

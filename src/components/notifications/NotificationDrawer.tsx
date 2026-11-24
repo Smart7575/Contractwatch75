@@ -27,42 +27,43 @@ export const NotificationDrawer: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 h-dvh shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 pr-[env(safe-area-inset-right)]">
         {/* Drawer Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-          <div className="flex items-center gap-2">
-            <Bell className="w-4 h-4 text-indigo-500" />
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+        <div className="flex items-center justify-between px-5 pt-[calc(1rem+env(safe-area-inset-top))] pb-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Bell className="w-4 h-4 text-indigo-500 shrink-0" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
               Signal & Notice Alerts
             </h3>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono font-bold shrink-0">
               {notifications.length}
             </span>
           </div>
           <button
             onClick={() => setIsNotificationDrawerOpen(false)}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer shrink-0"
+            aria-label="Close notifications"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Lead times note */}
-        <div className="px-5 py-2.5 bg-indigo-50/50 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900/40 text-[11px] text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
+        <div className="px-5 py-2.5 bg-indigo-50/50 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900/40 text-[11px] text-indigo-900 dark:text-indigo-200 flex items-center justify-between gap-2 shrink-0">
           <span>Active schedule: 90, 60, 30, 14, 7, 0 days</span>
           <button
             onClick={() => {
               setIsNotificationDrawerOpen(false);
               setIsSettingsModalOpen(true);
             }}
-            className="font-semibold underline cursor-pointer"
+            className="font-semibold underline cursor-pointer min-h-[36px] px-1 shrink-0"
           >
             Customize
           </button>
         </div>
 
         {/* Notifications List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3">
           {user.settings.channels?.inApp === false ? (
             <div className="flex flex-col items-center justify-center h-64 text-center text-slate-400">
               <BellOff className="w-10 h-10 mb-2 text-slate-400 opacity-60" />

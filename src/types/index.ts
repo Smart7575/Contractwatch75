@@ -94,6 +94,8 @@ export interface Contract {
   annualCost: number;
   monthlyCost: number;
   paymentFrequency: PaymentFrequency;
+  paymentDay?: number; // 1-31 day of month when payment is planned
+  paymentMonth?: number; // 1-12 month of year for annual or quarterly anchor payment
   status: ContractStatus;
   contact: ContractContact;
   credentials?: ContractCredentials;
@@ -168,7 +170,7 @@ export interface InAppNotification {
 
 export type ViewMode = 'cards' | 'table' | 'timeline' | 'kanban';
 
-export type PageRoute = 'dashboard' | 'settings' | 'reports';
+export type PageRoute = 'dashboard' | 'cashflow' | 'settings' | 'reports';
 
 export interface FilterState {
   search: string;

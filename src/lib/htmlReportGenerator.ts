@@ -1,4 +1,5 @@
 import { Contract, Category, User } from '../types';
+import { exportFile } from './fileExportHelper';
 import {
   formatCurrency,
   formatDate,
@@ -325,20 +326,17 @@ export function generatePrintableHTML(
 </html>`;
 }
 
-export function downloadPrintableHTML(
+export async function downloadPrintableHTML(
   contracts: Contract[],
   categories: Category[],
   user: User
-): void {
+): Promise<void> {
   const htmlContent = generatePrintableHTML(contracts, categories, user);
-  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
   const dateStr = new Date().toISOString().split('T')[0];
-  a.download = `contractwatch-report-${dateStr}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  await exportFile({
+    filename: `contractwatch-report-${dateStr}.html`,
+    content: htmlContent,
+    mimeType: 'text/html;charset=utf-8;',
+    title: 'ContractWatch75 Printable Report',
+  });
 }

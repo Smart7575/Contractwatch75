@@ -1,9 +1,12 @@
+import { Capacitor } from '@capacitor/core';
 import { jsPDF } from 'jspdf';
 import { Contract, Category, User } from '../types';
+import { shareExistingBlob } from './fileExportHelper';
 import {
   formatCurrency,
   formatDate,
   getDaysRemaining,
+  getContractUrgency,
   getEffectiveCancellationDeadline,
   isContractRolledForward,
   isContractActive,
@@ -133,26 +136,18 @@ export function createPortfolioPDFDoc(
   y += 18;
 
   // 2. Radar Notice Horizons (4 Compact Status Cards)
-  const overdueContractsList = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts)) return false;
-    const days = getDaysRemaining(c.cancellationDeadline);
-    return days < 0;
-  });
-  const next30ContractsList = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts)) return false;
-    const days = getDaysRemaining(c.cancellationDeadline);
-    return days >= 0 && days <= 30;
-  });
-  const days31to90ContractsList = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts)) return false;
-    const days = getDaysRemaining(c.cancellationDeadline);
-    return days > 30 && days <= 90;
-  });
-  const laterContractsList = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts)) return true;
-    const days = getDaysRemaining(c.cancellationDeadline);
-    return days > 90;
-  });
+  const overdueContractsList = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'overdue'
+  );
+  const next30ContractsList = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'next_30'
+  );
+  const days31to90ContractsList = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === '31_90'
+  );
+  const laterContractsList = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'later'
+  );
 
   const overdueSpendTotal = overdueContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const next30SpendTotal = next30ContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
@@ -1140,8 +1135,21 @@ export async function exportPDFReport(
   const dateStr = new Date().toISOString().split('T')[0];
   const filename = `contractwatch-portfolio-report-${dateStr}.pdf`;
   const blobUrl = URL.createObjectURL(blob);
-  const isIpad = isAppleTouchDevice();
+  const isNative = Capacitor.isNativePlatform();
+  const isIpad = isAppleTouchDevice() || isNative;
   let shared = false;
+
+  if (isNative) {
+    const shareOutcome = await shareExistingBlob(blob, filename, 'application/pdf');
+    return {
+      blob,
+      blobUrl,
+      dataUri,
+      filename,
+      shared: shareOutcome === 'shared',
+      isIpad: true,
+    };
+  }
 
   // On iPad/iOS devices: trigger native Share Sheet (AirDrop, Save to Files, Print) if available
   if (isIpad && typeof navigator !== 'undefined' && navigator.canShare) {

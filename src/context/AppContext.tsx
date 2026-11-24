@@ -25,8 +25,10 @@ import {
   getDaysRemaining,
   getTodayString,
   getUrgencyLevel,
+  getContractUrgency,
   isContractActive,
   isContractCancelledActive,
+  isContractRolledForward,
   shiftDateByOneYear,
   shiftDateByPeriod,
 } from '../lib/dateUtils';
@@ -214,6 +216,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (typeof window !== 'undefined') {
       if (window.location.hash === '#settings') return 'settings';
       if (window.location.hash === '#reports') return 'reports';
+      if (window.location.hash === '#cashflow') return 'cashflow';
     }
     return 'dashboard';
   });
@@ -225,8 +228,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         window.location.hash = '#settings';
       } else if (page === 'reports') {
         window.location.hash = '#reports';
+      } else if (page === 'cashflow') {
+        window.location.hash = '#cashflow';
       } else {
-        if (window.location.hash === '#settings' || window.location.hash === '#reports') {
+        if (
+          window.location.hash === '#settings' ||
+          window.location.hash === '#reports' ||
+          window.location.hash === '#cashflow'
+        ) {
           history.replaceState(null, '', window.location.pathname + window.location.search);
         }
       }
@@ -239,6 +248,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentPageState('settings');
       } else if (window.location.hash === '#reports') {
         setCurrentPageState('reports');
+      } else if (window.location.hash === '#cashflow') {
+        setCurrentPageState('cashflow');
       } else {
         setCurrentPageState('dashboard');
       }
@@ -261,7 +272,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     testConnection();
 
+    let authResolved = false;
+    const authTimeout = window.setTimeout(() => {
+      if (!authResolved) {
+        setIsLoadingAuth(false);
+      }
+    }, 3500);
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      authResolved = true;
+      window.clearTimeout(authTimeout);
       setIsLoadingAuth(false);
       if (fbUser) {
         setIsFirebaseAuthenticated(true);
@@ -299,7 +319,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      window.clearTimeout(authTimeout);
+      unsubscribeAuth();
+    };
   }, []);
 
   // 2. Real-time Firestore sync for authenticated user contracts
@@ -388,12 +411,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const leadTimes = user.settings.defaultReminders || [90, 60, 30, 14, 7, 0];
 
     for (const contract of contracts) {
-      if (contract.status !== 'active') continue;
+      if (
+        !isContractActive(contract) ||
+        isContractRolledForward(contract, contracts) ||
+        contract.status !== 'active' ||
+        Boolean(contract.cancelledAt) ||
+        contract.isEndDateOpenEnded
+      ) {
+        continue;
+      }
       const effectiveDeadline = getEffectiveCancellationDeadline(contract);
       if (!effectiveDeadline) continue;
 
       const days = getDaysRemaining(effectiveDeadline);
-      const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
+      const urgency = getContractUrgency(contract, contracts);
 
       // Check if overdue
       if (days < 0) {

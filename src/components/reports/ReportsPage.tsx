@@ -6,6 +6,7 @@ import {
   formatDate,
   getDaysRemaining,
   getUrgencyLevel,
+  getContractUrgency,
   getUrgencyMetadata,
   getEffectiveCancellationDeadline,
   isContractRolledForward,
@@ -15,7 +16,8 @@ import {
 import { exportContractsToCSV } from '../../lib/csvHelper';
 import { generatePortfolioPDF, exportPDFReport, isAppleTouchDevice } from '../../lib/pdfReportGenerator';
 import { downloadPrintableHTML } from '../../lib/htmlReportGenerator';
-import { exportFile } from '../../lib/fileExportHelper';
+import { Capacitor } from '@capacitor/core';
+import { exportFile, shareExistingBlob } from '../../lib/fileExportHelper';
 import {
   Zap,
   Wifi,
@@ -208,14 +210,14 @@ export const ReportsPage: React.FC = () => {
         });
       }
 
-      if (navigator.share && currentBlob) {
-        const file = new File([currentBlob], filename, { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-          });
-          setPrintStatusMessage('Saved / shared via iPad!');
-          return;
+      if (currentBlob && filename) {
+        const shared = await shareExistingBlob(
+          currentBlob,
+          filename,
+          'application/pdf'
+        );
+        if (shared) {
+          setPrintStatusMessage('Saved / shared via iOS!');
         }
       }
     } catch (e: any) {
@@ -265,14 +267,14 @@ export const ReportsPage: React.FC = () => {
   // Trigger iPad Share Sheet on existing CSV
   const handleShareCsvOnIpad = async () => {
     try {
-      if (csvExportData && navigator.share) {
-        const file = new File([csvExportData.blob], csvExportData.filename, { type: 'text/csv' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-          });
-          setPrintStatusMessage('CSV shared / saved via iPad!');
-          return;
+      if (csvExportData) {
+        const shared = await shareExistingBlob(
+          csvExportData.blob,
+          csvExportData.filename,
+          'text/csv'
+        );
+        if (shared) {
+          setPrintStatusMessage('CSV shared / saved via iOS!');
         }
       }
     } catch (e: any) {
@@ -304,7 +306,7 @@ export const ReportsPage: React.FC = () => {
       if (statusFilter === 'expired' && c.status !== 'expired' && !isContractCancelledActive(c)) return false;
       if (statusFilter === 'urgent') {
         if (!isContractActive(c) || isContractCancelledActive(c)) return false;
-        if (isContractRolledForward(c, contracts)) return false;
+        if (isContractRolledForward(c, contracts) || c.isEndDateOpenEnded) return false;
         const deadline = getEffectiveCancellationDeadline(c);
         const days = getDaysRemaining(deadline);
         if (days < 0 || days > 30) return false;
@@ -355,40 +357,28 @@ export const ReportsPage: React.FC = () => {
     .filter((c) => c.coverageType === 'individual')
     .reduce((sum, c) => sum + (c.annualCost || 0), 0);
 
-  const urgentContractsCount = totalActiveContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
-    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return days >= 0 && days <= 30;
-  }).length;
+  const urgentContractsCount = totalActiveContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'next_30'
+  ).length;
 
-  const overdueContractsCount = totalActiveContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
-    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return days < 0;
-  }).length;
+  const overdueContractsCount = totalActiveContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'overdue'
+  ).length;
 
   // Cancellation Radar Horizons Breakdown
-  // Contracts that have already rolled forward or have been cancelled have had their notice processed and are not pending notice action
-  const overdueContractsList = totalActiveContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
-    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return days < 0;
-  });
-  const next30ContractsList = totalActiveContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
-    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return days >= 0 && days <= 30;
-  });
-  const days31to90ContractsList = totalActiveContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return false;
-    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return days > 30 && days <= 90;
-  });
-  const laterContractsList = totalActiveContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || isContractCancelledActive(c) || c.status === 'cancelled') return true;
-    const days = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return days > 90;
-  });
+  // Contracts that have already rolled forward, have been cancelled, or are rolling monthly have no pending fixed-term notice action
+  const overdueContractsList = totalActiveContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'overdue'
+  );
+  const next30ContractsList = totalActiveContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'next_30'
+  );
+  const days31to90ContractsList = totalActiveContracts.filter(
+    (c) => getContractUrgency(c, contracts) === '31_90'
+  );
+  const laterContractsList = totalActiveContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'later'
+  );
 
   const overdueSpendTotal = overdueContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
   const next30SpendTotal = next30ContractsList.reduce((sum, c) => sum + (c.annualCost || 0), 0);
@@ -468,12 +458,12 @@ export const ReportsPage: React.FC = () => {
   }, [categories, filteredContracts, totalAnnualSpend, categorySortBy, selectedCategoryFilter]);
 
   return (
-    <div className="max-w-6xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
+    <div className="max-w-6xl mx-auto w-full min-w-0 space-y-6 animate-in fade-in duration-200">
       {/* Top Breadcrumb & Action Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
         <button
           onClick={() => setCurrentPage('dashboard')}
-          className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl shadow-2xs transition-colors cursor-pointer w-fit"
+          className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl shadow-2xs transition-colors cursor-pointer w-fit"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Radar Overview</span>
@@ -489,7 +479,7 @@ export const ReportsPage: React.FC = () => {
 
           <button
             onClick={handleExportCSV}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold shadow-2xs transition cursor-pointer"
+            className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold shadow-2xs transition cursor-pointer"
             title="Export CSV spreadsheet"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
@@ -499,7 +489,7 @@ export const ReportsPage: React.FC = () => {
           <button
             onClick={handleDownloadPDF}
             disabled={isGeneratingPDF}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
+            className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
             title="Export portfolio report as vector PDF"
           >
             {isGeneratingPDF ? (
@@ -899,24 +889,24 @@ export const ReportsPage: React.FC = () => {
       {/* Filter and View Controls Bar (hidden during print) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 print:hidden">
         {/* Search Input */}
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 min-w-0 max-w-sm">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search report by contract, supplier, or document..."
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full min-w-0 min-h-[44px] sm:min-h-[36px] pl-9 pr-3 py-1.5 text-base sm:text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           />
         </div>
 
         {/* Filter buttons & dropdowns */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           {/* Category Filter */}
           <select
             value={selectedCategoryFilter}
             onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+            className="min-h-[44px] sm:min-h-[36px] min-w-0 max-w-full px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
           >
             <option value="all">All Categories ({contracts.length})</option>
             {categories.map((c) => (
@@ -930,7 +920,7 @@ export const ReportsPage: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+            className="min-h-[44px] sm:min-h-[36px] min-w-0 max-w-full px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active Only</option>
@@ -942,7 +932,7 @@ export const ReportsPage: React.FC = () => {
           <select
             value={coverageFilter}
             onChange={(e) => setCoverageFilter(e.target.value as any)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+            className="min-h-[44px] sm:min-h-[36px] min-w-0 max-w-full px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
             aria-label="Filter by coverage scope"
           >
             <option value="all">Coverage: All ({contracts.length})</option>
@@ -951,12 +941,12 @@ export const ReportsPage: React.FC = () => {
           </select>
 
           {/* Has Documents checkbox toggle */}
-          <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+          <label className="min-h-[44px] sm:min-h-[36px] flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
             <input
               type="checkbox"
               checked={docsOnly}
               onChange={(e) => setDocsOnly(e.target.checked)}
-              className="rounded text-indigo-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+              className="rounded text-indigo-600 focus:ring-0 w-4 h-4 cursor-pointer"
             />
             <span>With Documents ({totalDocuments})</span>
           </label>
@@ -965,7 +955,7 @@ export const ReportsPage: React.FC = () => {
           <select
             value={categorySortBy}
             onChange={(e) => setCategorySortBy(e.target.value as any)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+            className="min-h-[44px] sm:min-h-[36px] min-w-0 max-w-full px-2.5 py-1.5 text-base sm:text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
             aria-label="Sort reports overview"
           >
             <option value="name">Sort: Category & Subcategory (A-Z)</option>
@@ -974,17 +964,17 @@ export const ReportsPage: React.FC = () => {
           </select>
 
           {/* Expand / Collapse All */}
-          <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
+          <div className="flex items-center gap-1 sm:border-l border-slate-200 dark:border-slate-800 sm:pl-2">
             <button
               onClick={handleExpandAll}
-              className="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 transition cursor-pointer"
+              className="min-h-[44px] sm:min-h-[34px] px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 transition cursor-pointer"
             >
               Expand All
             </button>
             <span className="text-slate-300 dark:text-slate-700">·</span>
             <button
               onClick={handleCollapseAll}
-              className="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 transition cursor-pointer"
+              className="min-h-[44px] sm:min-h-[34px] px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 transition cursor-pointer"
             >
               Collapse All
             </button>
@@ -1104,8 +1094,23 @@ export const ReportsPage: React.FC = () => {
                               {subGroup.contracts.map((contract) => {
                                 const effectiveDeadline = getEffectiveCancellationDeadline(contract);
                                 const daysRemaining = getDaysRemaining(effectiveDeadline);
-                                const urgency = getUrgencyLevel(effectiveDeadline, contract.status);
-                                const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining);
+                                const isRolledForward = isContractRolledForward(contract, contracts);
+                                const isCancelledActive = isContractCancelledActive(contract);
+                                const urgency = getUrgencyLevel(
+                                  effectiveDeadline,
+                                  contract.status,
+                                  isRolledForward,
+                                  isCancelledActive,
+                                  contract.isEndDateOpenEnded
+                                );
+                                const urgencyMeta = getUrgencyMetadata(
+                                  urgency,
+                                  daysRemaining,
+                                  contract.status,
+                                  isRolledForward,
+                                  isCancelledActive,
+                                  contract.isEndDateOpenEnded
+                                );
                                 const hasDocs = contract.documentLinks && contract.documentLinks.length > 0;
 
                                 return (
@@ -1507,49 +1512,52 @@ export const ReportsPage: React.FC = () => {
 
       {/* iPhone & iPad / Tablet Native PDF Viewer & Share Modal */}
       {isIpadViewerOpen && pdfPreviewData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[94vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-[calc(0.5rem+env(safe-area-inset-bottom))] pl-[calc(0.5rem+env(safe-area-inset-left))] pr-[calc(0.5rem+env(safe-area-inset-right))] bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
             {/* Modal Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
                   <Tablet className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    PDF Report Dossier (Landscape — iPhone, iPad & Desktop)
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                    PDF Report Dossier
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Identical landscape report layout across all iOS, iPadOS and desktop browsers
+                    Landscape report layout across iPhone, iPad &amp; desktop
                   </p>
                 </div>
               </div>
 
               {/* Action buttons on header */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   onClick={handleShareOnIpad}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                  className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
                   title="Open iOS share sheet (Save to Files / AirDrop / Print)"
                 >
                   <Share2 className="w-3.5 h-3.5" />
                   <span>Save to Files / Share</span>
                 </button>
 
-                <a
-                  href={pdfPreviewData.blobUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
-                  title="Open in a separate Safari window"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open in Safari</span>
-                </a>
+                {!Capacitor.isNativePlatform() && (
+                  <a
+                    href={pdfPreviewData.blobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold transition"
+                    title="Open in a separate Safari window"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open in Safari</span>
+                  </a>
+                )}
 
                 <button
                   onClick={() => setIsIpadViewerOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  className="min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                  aria-label="Close PDF preview"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1557,35 +1565,45 @@ export const ReportsPage: React.FC = () => {
             </div>
 
             {/* Modal Body: Embedded PDF View & Guidance */}
-            <div className="p-4 sm:p-5 flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto">
+            <div className="p-4 sm:p-5 pb-[calc(1rem+env(safe-area-inset-bottom))] flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto">
               {/* Instructions banner for iPhone and iPad users */}
               <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 text-xs text-indigo-900 dark:text-indigo-200 flex items-start gap-2.5">
                 <Share2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-semibold">iPhone & iPad Instructions:</strong>{' '}
-                  This report is created with the exact same vector landscape format and layout. The first page presents the full Radar Overview contract roster, followed by the detailed portfolio subreport. Tap <span className="font-semibold text-indigo-700 dark:text-indigo-300">"Save to Files / Share"</span> above to save directly into Files (iCloud Drive / On My Device), share via AirDrop, or print via AirPrint. You can also use the direct download link below.
+                  <strong className="font-semibold">iPhone &amp; iPad Instructions:</strong>{' '}
+                  This report uses the full landscape vector layout. Tap <span className="font-semibold text-indigo-700 dark:text-indigo-300">&quot;Save to Files / Share&quot;</span> above to save directly into Files, share via AirDrop, or print via AirPrint.
                 </div>
               </div>
 
               {/* Embedded PDF iframe */}
-              <div className="flex-1 w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 min-h-[480px]">
+              <div className="flex-1 w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 min-h-[260px] sm:min-h-[480px]">
                 <iframe
                   src={pdfPreviewData.blobUrl}
-                  className="w-full h-full min-h-[480px]"
+                  className="w-full h-full min-h-[260px] sm:min-h-[480px]"
                   title="PDF Report Preview"
                 />
               </div>
 
-              {/* Bottom Quick Download link */}
-              <div className="flex items-center justify-between pt-1 text-xs text-slate-500">
-                <span className="font-mono text-[11px] truncate max-w-xs">{pdfPreviewData.filename}</span>
-                <a
-                  href={pdfPreviewData.blobUrl}
-                  download={pdfPreviewData.filename}
-                  className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
-                >
-                  Direct download link (.pdf)
-                </a>
+              {/* Bottom Quick Download link / Native Share */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-slate-500">
+                <span className="font-mono text-[11px] truncate max-w-full sm:max-w-xs">{pdfPreviewData.filename}</span>
+                {Capacitor.isNativePlatform() ? (
+                  <button
+                    onClick={handleShareOnIpad}
+                    className="min-h-[44px] sm:min-h-[32px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share PDF File</span>
+                  </button>
+                ) : (
+                  <a
+                    href={pdfPreviewData.blobUrl}
+                    download={pdfPreviewData.filename}
+                    className="min-h-[44px] sm:min-h-[32px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline inline-flex items-center"
+                  >
+                    Direct download link (.pdf)
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -1594,17 +1612,17 @@ export const ReportsPage: React.FC = () => {
 
       {/* iPad / Tablet CSV Export & Share Modal */}
       {isCsvModalOpen && csvExportData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-[calc(0.5rem+env(safe-area-inset-bottom))] pl-[calc(0.5rem+env(safe-area-inset-left))] pr-[calc(0.5rem+env(safe-area-inset-right))] bg-black/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
                   <FileSpreadsheet className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    CSV Spreadsheet Export (iPad)
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                    CSV Spreadsheet Export
                   </h3>
                   <p className="text-xs text-slate-500">
                     Open in Apple Numbers, Excel, or save to Files
@@ -1614,20 +1632,21 @@ export const ReportsPage: React.FC = () => {
 
               <button
                 onClick={() => setIsCsvModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                className="min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+                aria-label="Close CSV export"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-4">
               {/* Guidance for iPad users */}
               <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 flex items-start gap-2.5">
                 <Share2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-semibold">iPad Instructions:</strong>{' '}
-                  Tap <span className="font-semibold text-emerald-700 dark:text-emerald-300">"Save to Files / Numbers / Excel"</span> to open the file directly in Numbers, Excel, or save to iCloud Drive.
+                  <strong className="font-semibold">iOS &amp; iPad Instructions:</strong>{' '}
+                  Tap <span className="font-semibold text-emerald-700 dark:text-emerald-300">&quot;Save to Files / Numbers&quot;</span> to open the file directly in Numbers, Excel, or save to iCloud Drive.
                 </div>
               </div>
 
@@ -1635,7 +1654,7 @@ export const ReportsPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={handleShareCsvOnIpad}
-                  className="p-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white flex flex-col justify-between gap-2 text-left transition cursor-pointer shadow-xs"
+                  className="min-h-[44px] p-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white flex flex-col justify-between gap-2 text-left transition cursor-pointer shadow-xs"
                 >
                   <div className="flex items-center gap-2 font-bold text-xs">
                     <Share2 className="w-4 h-4" />
@@ -1648,7 +1667,7 @@ export const ReportsPage: React.FC = () => {
 
                 <button
                   onClick={handleCopyCsv}
-                  className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 flex flex-col justify-between gap-2 text-left transition cursor-pointer"
+                  className="min-h-[44px] p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 flex flex-col justify-between gap-2 text-left transition cursor-pointer"
                 >
                   <div className="flex items-center gap-2 font-bold text-xs text-slate-900 dark:text-white">
                     {csvCopied ? (
@@ -1664,19 +1683,21 @@ export const ReportsPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* Direct link fallback */}
-              <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
-                <span className="font-mono text-[11px] text-slate-500 truncate max-w-xs">
+              {/* Direct link fallback (hidden on native Capacitor where Share Sheet handles saving) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                <span className="font-mono text-[11px] text-slate-500 truncate max-w-full sm:max-w-xs">
                   {csvExportData.filename}
                 </span>
-                <a
-                  href={csvExportData.blobUrl}
-                  download={csvExportData.filename}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition"
-                >
-                  <Download className="w-3 h-3" />
-                  <span>Download file</span>
-                </a>
+                {!Capacitor.isNativePlatform() && (
+                  <a
+                    href={csvExportData.blobUrl}
+                    download={csvExportData.filename}
+                    className="min-h-[44px] sm:min-h-[34px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Download file</span>
+                  </a>
+                )}
               </div>
 
               {/* Data preview snippet */}

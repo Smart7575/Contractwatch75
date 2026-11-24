@@ -1,10 +1,14 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { Capacitor } from '@capacitor/core';
 import {
   getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
   GoogleAuthProvider,
   OAuthProvider,
   setPersistence,
   browserLocalPersistence,
+  type Auth,
 } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -12,8 +16,22 @@ import firebaseConfig from '../../firebase-applet-config.json';
 export { firebaseConfig };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const isNativePlatform = Capacitor.isNativePlatform();
 
-export const auth = getAuth(app);
+let authInstance: Auth;
+if (isNativePlatform) {
+  try {
+    authInstance = initializeAuth(app, {
+      persistence: indexedDBLocalPersistence,
+    });
+  } catch {
+    authInstance = getAuth(app);
+  }
+} else {
+  authInstance = getAuth(app);
+}
+
+export const auth = authInstance;
 export const db = getFirestore(app);
 
 // Providers
@@ -24,8 +42,8 @@ export const appleProvider = new OAuthProvider('apple.com');
 appleProvider.addScope('email');
 appleProvider.addScope('name');
 
-// Attempt local persistence for seamless session maintenance
-if (typeof window !== 'undefined') {
+// Attempt local persistence for seamless session maintenance on web only
+if (!isNativePlatform && typeof window !== 'undefined') {
   setPersistence(auth, browserLocalPersistence).catch((err) => {
     // Graceful fallback for sandboxed iframe or restricted third-party storage
     if (process.env.NODE_ENV === 'development') {

@@ -234,27 +234,27 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] flex flex-col overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 shrink-0 gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-xs"
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
               style={{ backgroundColor: color }}
             >
               <SelectedIconComponent className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
                 {isEditing ? 'Edit Category & Subcategories' : 'Add New Category'}
               </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 {isEditing
                   ? 'Changes cascade automatically to all linked contracts'
                   : 'Manage contract categories, icons, colors, and subcategories'}
@@ -263,7 +263,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -280,7 +280,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           )}
 
           {/* Section 1: Category Name */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 min-w-0">
             <label className="block font-semibold text-slate-700 dark:text-slate-300">
               Category Name <span className="text-rose-500">*</span>
             </label>
@@ -292,7 +292,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                 if (error) setError(null);
               }}
               placeholder="e.g. Streaming & Media, Fitness, Health, Business..."
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+              className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
               autoFocus
             />
           </div>
@@ -469,7 +469,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
             </div>
 
             {/* Add Subcategory Input */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <input
                 type="text"
                 value={newSubcatInput}
@@ -481,13 +481,13 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
                   }
                 }}
                 placeholder="Add new subcategory..."
-                className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                className="flex-1 min-w-0 px-3 py-2 sm:py-1.5 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
               />
               <button
                 type="button"
                 onClick={handleAddSubcat}
                 disabled={!newSubcatInput.trim()}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl font-semibold flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                className="min-h-[44px] sm:min-h-[34px] px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl font-semibold flex items-center gap-1 cursor-pointer transition shadow-2xs shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add</span>
@@ -520,11 +520,11 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom))] bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700 rounded-xl font-medium cursor-pointer transition"
+            className="min-h-[44px] px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700 rounded-xl font-medium cursor-pointer transition"
           >
             Cancel
           </button>
@@ -532,7 +532,7 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
           <button
             type="button"
             onClick={handleSave}
-            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer transition"
+            className="min-h-[44px] px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer transition"
           >
             <Check className="w-4 h-4" />
             <span>{isEditing ? 'Save Changes' : 'Create Category'}</span>

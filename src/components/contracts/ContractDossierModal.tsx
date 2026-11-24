@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useApp } from '../../context/AppContext';
-import { Contract, DocumentType, DocumentProvider } from '../../types';
+import { Contract, DocumentType, DocumentProvider, PaymentFrequency } from '../../types';
+import { exportFile } from '../../lib/fileExportHelper';
 import {
   formatCurrency,
   formatDate,
@@ -14,6 +16,10 @@ import {
   getEffectiveCancellationDeadline,
   isContractRolledForward,
   isContractCancelledActive,
+  formatOrdinalDay,
+  getContractPaymentSchedule,
+  formatPlannedPaymentSchedule,
+  getNextPlannedPaymentDate,
 } from '../../lib/dateUtils';
 import {
   X,
@@ -61,6 +67,7 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   const {
     setSelectedContractId,
     setEditingContract,
+    updateContract,
     deleteContract,
     duplicateContract,
     rollForwardContract,
@@ -101,6 +108,35 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   const [isAddingPrice, setIsAddingPrice] = useState(false);
   const [priceDate, setPriceDate] = useState(new Date().toISOString().split('T')[0]);
   const [priceAnnual, setPriceAnnual] = useState<number | ''>('');
+
+  // Inline Planned Payment Schedule editor state
+  const [isEditingSchedule, setIsEditingSchedule] = useState(false);
+  const [schedFrequency, setSchedFrequency] = useState<PaymentFrequency>('monthly');
+  const [schedMonth, setSchedMonth] = useState<number | ''>('');
+  const [schedDay, setSchedDay] = useState<number | ''>('');
+
+  const openScheduleEditor = () => {
+    if (!contract) return;
+    const resolved = getContractPaymentSchedule(contract);
+    setSchedFrequency(contract.paymentFrequency || 'monthly');
+    setSchedMonth(contract.paymentMonth ?? resolved.month);
+    setSchedDay(contract.paymentDay ?? resolved.day);
+    setIsEditingSchedule(true);
+  };
+
+  const handleSaveSchedule = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!contract) return;
+    updateContract(contract.id, {
+      paymentFrequency: schedFrequency,
+      paymentDay: schedDay === '' ? undefined : Number(schedDay),
+      paymentMonth:
+        schedFrequency === 'monthly' || schedMonth === ''
+          ? undefined
+          : Number(schedMonth),
+    });
+    setIsEditingSchedule(false);
+  };
   const [priceNote, setPriceNote] = useState('');
 
 
@@ -127,8 +163,8 @@ export const ContractDossierModal: React.FC<ContractDossierModalProps> = ({
   const daysRemaining = getDaysRemaining(effectiveDeadline);
   const isRolledForward = isContractRolledForward(contract, contracts);
   const isCancelledActive = isContractCancelledActive(contract);
-  const urgency = getUrgencyLevel(effectiveDeadline, contract.status, isRolledForward, isCancelledActive);
-  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status, isRolledForward, isCancelledActive);
+  const urgency = getUrgencyLevel(effectiveDeadline, contract.status, isRolledForward, isCancelledActive, contract.isEndDateOpenEnded);
+  const urgencyMeta = getUrgencyMetadata(urgency, daysRemaining, contract.status, isRolledForward, isCancelledActive, contract.isEndDateOpenEnded);
 
   const isAutoExtendActive =
     contract.autoExtendEnabled === true ||
@@ -238,36 +274,72 @@ ${user.name}`;
     setTimeout(() => setCopiedLetter(false), 2500);
   };
 
-  const handlePrintLetter = () => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Cancellation Letter - ${contract.name}</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; line-height: 1.6; color: #1e293b; max-width: 700px; margin: 0 auto; }
-              pre { white-space: pre-wrap; font-family: inherit; font-size: 14px; }
-            </style>
-          </head>
-          <body>
-            <pre>${letterBody}</pre>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+  const handlePrintLetter = async () => {
+    const escapedBody = letterBody
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const safeTitle = contract.name.replace(/[<>]/g, '');
+    const htmlContent = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Cancellation Letter - ${safeTitle}</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; line-height: 1.6; color: #1e293b; max-width: 700px; margin: 0 auto; }
+      pre { white-space: pre-wrap; font-family: inherit; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <pre>${escapedBody}</pre>
+  </body>
+</html>`;
+
+    if (Capacitor.isNativePlatform()) {
+      const slug = contract.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'contract';
+      await exportFile({
+        filename: `cancellation-letter-${slug}.html`,
+        content: htmlContent,
+        mimeType: 'text/html;charset=utf-8',
+        title: `Cancellation Letter - ${contract.name}`,
+      });
+      return;
     }
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (frameDoc) {
+      frameDoc.open();
+      frameDoc.write(htmlContent);
+      frameDoc.close();
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }
+
+    setTimeout(() => {
+      iframe.remove();
+    }, 1500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-      <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] pl-[calc(0.75rem+env(safe-area-inset-left))] pr-[calc(0.75rem+env(safe-area-inset-right))] bg-black/60 backdrop-blur-xs overflow-y-auto">
+      <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] animate-in fade-in zoom-in-95 duration-150">
         {/* Top Header: Title, Category & Action Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 shrink-0">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 mb-1">
               <span className="font-semibold text-slate-700 dark:text-slate-300">
                 {category?.name}
               </span>
@@ -300,15 +372,15 @@ ${user.name}`;
                 </>
               )}
             </div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white break-words">
               {contract.name}
             </h2>
           </div>
 
-          <div className="flex items-center gap-1.5 self-end sm:self-auto">
+          <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-auto">
             <button
               onClick={() => toggleFavorite(contract.id)}
-              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+              className={`min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-2 rounded-xl border transition-colors cursor-pointer ${
                 contract.isFavorite
                   ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:border-amber-900'
                   : 'text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
@@ -322,7 +394,7 @@ ${user.name}`;
                 onClose();
                 setEditingContract(contract);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              className="min-h-[44px] sm:min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5" />
               <span>Edit</span>
@@ -332,7 +404,7 @@ ${user.name}`;
                 rollForwardContract(contract.id);
                 onClose();
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition cursor-pointer shadow-2xs"
+              className="min-h-[44px] sm:min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition cursor-pointer shadow-2xs"
               title="Duplicate and roll forward start & expiration dates by 1 year"
             >
               <RotateCw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -343,7 +415,7 @@ ${user.name}`;
                 duplicateContract(contract.id);
                 onClose();
               }}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition cursor-pointer"
+              className="min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition cursor-pointer"
               title="Duplicate contract"
             >
               <Copy className="w-4 h-4" />
@@ -353,14 +425,14 @@ ${user.name}`;
                 deleteContract(contract.id);
                 onClose();
               }}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+              className="min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
               title="Delete contract"
             >
               <Trash2 className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              className="min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               aria-label="Close dossier"
             >
               <X className="w-5 h-5" />
@@ -435,7 +507,7 @@ ${user.name}`;
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
+        <div className="flex items-center gap-1 px-4 sm:px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto shrink-0">
           {[
             { id: 'overview', label: 'Overview', icon: FileText },
             { id: 'documents', label: `Documents (${contract.documentLinks?.length || 0})`, icon: HardDrive },
@@ -448,7 +520,7 @@ ${user.name}`;
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+                className={`min-h-[44px] flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
                     : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
@@ -462,7 +534,7 @@ ${user.name}`;
         </div>
 
         {/* Dossier Tab Content */}
-        <div className="flex-1 p-6 overflow-y-auto space-y-6 text-xs sm:text-sm">
+        <div className="flex-1 min-h-0 p-4 sm:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] overflow-y-auto space-y-6 text-xs sm:text-sm">
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
@@ -599,34 +671,149 @@ ${user.name}`;
               </div>
 
               {/* Financial Summary */}
-              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    Financial Commitment
-                  </h4>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono tabular-nums">
-                      {formatCurrency(contract.annualCost, user.settings.currency)}
-                    </span>
-                    <span className="text-xs text-slate-500 font-mono tabular-nums">
-                      / year (~{formatCurrency(contract.monthlyCost, user.settings.currency)}/month)
-                    </span>
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Financial Commitment
+                    </h4>
+                    <div className="flex items-baseline gap-2 mt-1">
+                      <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono tabular-nums">
+                        {formatCurrency(contract.annualCost, user.settings.currency)}
+                      </span>
+                      <span className="text-xs text-slate-500 font-mono tabular-nums">
+                        / year (~{formatCurrency(contract.monthlyCost, user.settings.currency)}/month)
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 mt-1.5">
+                      <span>
+                        Billed: <strong className="capitalize text-slate-700 dark:text-slate-200">{contract.paymentFrequency}</strong>
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        Planned payment:{' '}
+                        <strong className="text-slate-700 dark:text-slate-200">
+                          {formatPlannedPaymentSchedule(contract)}
+                        </strong>
+                      </span>
+                      {(() => {
+                        const nextPay = getNextPlannedPaymentDate(contract);
+                        if (!nextPay) return null;
+                        const daysUntil = getDaysRemaining(nextPay);
+                        return (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span>
+                              Next payment:{' '}
+                              <strong className="font-mono tabular-nums text-indigo-600 dark:text-indigo-400">
+                                {formatDate(nextPay)}
+                              </strong>
+                              <span className="text-[11px] text-slate-400 ml-1">
+                                ({daysUntil === 0 ? 'today' : `in ${daysUntil}d`})
+                              </span>
+                            </span>
+                          </>
+                        );
+                      })()}
+                      <span aria-hidden="true">·</span>
+                      <button
+                        type="button"
+                        onClick={() => (isEditingSchedule ? setIsEditingSchedule(false) : openScheduleEditor())}
+                        className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        {isEditingSchedule ? 'Close' : 'Set payment day'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Billed: <strong className="capitalize">{contract.paymentFrequency}</strong>
-                  </div>
+
+                  {potentialSaving > 0 && (
+                    <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300">
+                      <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <Sparkles className="w-4 h-4 text-emerald-600" />
+                        <span>Potential Saving by Switching</span>
+                      </div>
+                      <div className="text-lg font-bold font-mono tabular-nums mt-0.5">
+                        {formatCurrency(potentialSaving, user.settings.currency)} / year
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {potentialSaving > 0 && (
-                  <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300">
-                    <div className="flex items-center gap-1.5 text-xs font-bold">
-                      <Sparkles className="w-4 h-4 text-emerald-600" />
-                      <span>Potential Saving by Switching</span>
+                {isEditingSchedule && (
+                  <form
+                    onSubmit={handleSaveSchedule}
+                    className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end"
+                  >
+                    <div className="min-w-0">
+                      <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                        Billing Frequency
+                      </label>
+                      <select
+                        value={schedFrequency}
+                        onChange={(e) => setSchedFrequency(e.target.value as PaymentFrequency)}
+                        className="w-full min-w-0 px-2.5 py-2 sm:py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white"
+                      >
+                        <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="annually">Annually</option>
+                      </select>
                     </div>
-                    <div className="text-lg font-bold font-mono tabular-nums mt-0.5">
-                      {formatCurrency(potentialSaving, user.settings.currency)} / year
+
+                    {schedFrequency !== 'monthly' && (
+                      <div className="min-w-0">
+                        <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                          {schedFrequency === 'annually' ? 'Payment Month' : 'First Billing Month'}
+                        </label>
+                        <select
+                          value={schedMonth}
+                          onChange={(e) => setSchedMonth(e.target.value === '' ? '' : Number(e.target.value))}
+                          className="w-full min-w-0 px-2.5 py-2 sm:py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white"
+                        >
+                          {[
+                            'January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December',
+                          ].map((mName, idx) => (
+                            <option key={mName} value={idx + 1}>
+                              {mName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div className={`min-w-0 ${schedFrequency === 'monthly' ? 'sm:col-span-2' : ''}`}>
+                      <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                        Day of Payment
+                      </label>
+                      <select
+                        value={schedDay}
+                        onChange={(e) => setSchedDay(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full min-w-0 px-2.5 py-2 sm:py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs text-slate-900 dark:text-white font-mono tabular-nums"
+                      >
+                        {Array.from({ length: 31 }, (_, idx) => idx + 1).map((d) => (
+                          <option key={d} value={d}>
+                            {formatOrdinalDay(d)} of the month
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  </div>
+
+                    <div className="flex items-center gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingSchedule(false)}
+                        className="min-h-[44px] sm:min-h-[34px] px-2.5 py-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="min-h-[44px] sm:min-h-[34px] px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                      >
+                        Save Day
+                      </button>
+                    </div>
+                  </form>
                 )}
               </div>
 
@@ -867,26 +1054,30 @@ ${user.name}`;
                   className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3"
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input
-                      type="text"
-                      required
-                      value={docTitle}
-                      onChange={(e) => setDocTitle(e.target.value)}
-                      placeholder="Document Title (e.g. 2026 Insurance Policy)"
-                      className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
-                    />
-                    <select
-                      value={docType}
-                      onChange={(e) => setDocType(e.target.value as any)}
-                      className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
-                    >
-                      <option value="contract">Contract Agreement</option>
-                      <option value="policy">Policy Schedule</option>
-                      <option value="invoice">Invoice / Bill</option>
-                      <option value="terms">Terms & Conditions</option>
-                      <option value="correspondence">Letter / Correspondence</option>
-                      <option value="other">Other</option>
-                    </select>
+                    <div className="min-w-0">
+                      <input
+                        type="text"
+                        required
+                        value={docTitle}
+                        onChange={(e) => setDocTitle(e.target.value)}
+                        placeholder="Document Title (e.g. 2026 Insurance Policy)"
+                        className="w-full min-w-0 px-3 py-2 min-h-[44px] sm:min-h-[38px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <select
+                        value={docType}
+                        onChange={(e) => setDocType(e.target.value as any)}
+                        className="w-full min-w-0 px-3 py-2 min-h-[44px] sm:min-h-[38px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs"
+                      >
+                        <option value="contract">Contract Agreement</option>
+                        <option value="policy">Policy Schedule</option>
+                        <option value="invoice">Invoice / Bill</option>
+                        <option value="terms">Terms & Conditions</option>
+                        <option value="correspondence">Letter / Correspondence</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
                   </div>
                   <input
                     type="text"
@@ -894,19 +1085,19 @@ ${user.name}`;
                     value={docUrl}
                     onChange={(e) => setDocUrl(e.target.value)}
                     placeholder="URL: smb://synology.local/... or https://drive.google.com/..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono"
+                    className="w-full min-w-0 px-3 py-2 min-h-[44px] sm:min-h-[38px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs font-mono"
                   />
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => setIsAddingDoc(false)}
-                      className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-800"
+                      className="min-h-[44px] sm:min-h-[34px] px-3 py-1.5 text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold"
+                      className="min-h-[44px] sm:min-h-[34px] px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold cursor-pointer"
                     >
                       Save Link
                     </button>
@@ -985,7 +1176,90 @@ ${user.name}`;
           {/* TAB 3: COSTS & PRICE HISTORY */}
           {activeTab === 'costs' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              {/* Planned Payment & Rate Summary (Direct Edit) */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Billing Frequency</div>
+                    <select
+                      aria-label="Billing Frequency"
+                      value={contract.paymentFrequency}
+                      onChange={(e) =>
+                        updateContract(contract.id, {
+                          paymentFrequency: e.target.value as PaymentFrequency,
+                        })
+                      }
+                      className="mt-1 w-full min-w-0 px-2.5 py-2 sm:py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs font-semibold text-slate-900 dark:text-white"
+                    >
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="annually">Annually</option>
+                    </select>
+                  </div>
+
+                  {contract.paymentFrequency !== 'monthly' && (
+                    <div className="min-w-0">
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {contract.paymentFrequency === 'annually' ? 'Planned Payment Month' : 'First Billing Month'}
+                      </div>
+                      <select
+                        aria-label="Planned Payment Month"
+                        value={getContractPaymentSchedule(contract).month}
+                        onChange={(e) =>
+                          updateContract(contract.id, {
+                            paymentMonth: Number(e.target.value),
+                          })
+                        }
+                        className="mt-1 w-full min-w-0 px-2.5 py-2 sm:py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs font-semibold text-slate-900 dark:text-white"
+                      >
+                        {[
+                          'January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December',
+                        ].map((mName, idx) => (
+                          <option key={mName} value={idx + 1}>
+                            {mName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Day of Payment</div>
+                    <select
+                      aria-label="Day of Payment"
+                      value={getContractPaymentSchedule(contract).day}
+                      onChange={(e) =>
+                        updateContract(contract.id, {
+                          paymentDay: Number(e.target.value),
+                        })
+                      }
+                      className="mt-1 w-full min-w-0 px-2.5 py-2 sm:py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs font-semibold font-mono tabular-nums text-slate-900 dark:text-white"
+                    >
+                      {Array.from({ length: 31 }, (_, idx) => idx + 1).map((d) => (
+                        <option key={d} value={d}>
+                          {formatOrdinalDay(d)} of the month
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/70 dark:border-slate-700/70 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Schedule: <strong>{formatPlannedPaymentSchedule(contract)}</strong>
+                  </span>
+                  <span className="font-mono tabular-nums font-semibold text-indigo-600 dark:text-indigo-400">
+                    Next payment:{' '}
+                    {(() => {
+                      const nextPay = getNextPlannedPaymentDate(contract);
+                      return nextPay ? formatDate(nextPay) : 'No upcoming payment';
+                    })()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Price Changes & History
@@ -996,7 +1270,7 @@ ${user.name}`;
                 </div>
                 <button
                   onClick={() => setIsAddingPrice(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer shadow-xs transition"
+                  className="min-h-[44px] sm:min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer shadow-xs transition"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Log Price Change</span>
@@ -1009,43 +1283,49 @@ ${user.name}`;
                   className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-3"
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input
-                      type="date"
-                      required
-                      value={priceDate}
-                      onChange={(e) => setPriceDate(e.target.value)}
-                      className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={priceAnnual}
-                      onChange={(e) =>
-                        setPriceAnnual(e.target.value ? parseFloat(e.target.value) : '')
-                      }
-                      placeholder={`New Annual Cost (${getCurrencyLabel(user.settings.currency)})`}
-                      className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono"
-                    />
-                    <input
-                      type="text"
-                      value={priceNote}
-                      onChange={(e) => setPriceNote(e.target.value)}
-                      placeholder="Reason (e.g. Tacit renewal rate hike)"
-                      className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
-                    />
+                    <div className="min-w-0">
+                      <input
+                        type="date"
+                        required
+                        value={priceDate}
+                        onChange={(e) => setPriceDate(e.target.value)}
+                        className="w-full min-w-0 px-3 py-2 min-h-[44px] sm:min-h-[38px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs font-mono"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={priceAnnual}
+                        onChange={(e) =>
+                          setPriceAnnual(e.target.value ? parseFloat(e.target.value) : '')
+                        }
+                        placeholder={`New Annual Cost (${getCurrencyLabel(user.settings.currency)})`}
+                        className="w-full min-w-0 px-3 py-2 min-h-[44px] sm:min-h-[38px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs font-mono"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <input
+                        type="text"
+                        value={priceNote}
+                        onChange={(e) => setPriceNote(e.target.value)}
+                        placeholder="Reason (e.g. Tacit renewal rate hike)"
+                        className="w-full min-w-0 px-3 py-2 min-h-[44px] sm:min-h-[38px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs"
+                      />
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => setIsAddingPrice(false)}
-                      className="px-3 py-1.5 text-xs text-slate-500 cursor-pointer"
+                      className="min-h-[44px] sm:min-h-[34px] px-3 py-1.5 text-xs text-slate-500 cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold cursor-pointer transition"
+                      className="min-h-[44px] sm:min-h-[34px] px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold cursor-pointer transition"
                     >
                       Save Rate
                     </button>
@@ -1154,27 +1434,27 @@ ${user.name}`;
                     Pre-filled with your account name, customer reference, and notice deadline date.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleCopyLetter}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer shadow-xs transition"
+                    className="min-h-[44px] sm:min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer shadow-xs transition"
                   >
                     {copiedLetter ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedLetter ? 'Copied to Clipboard!' : 'Copy Letter Text'}</span>
                   </button>
                   <button
                     onClick={handlePrintLetter}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold cursor-pointer transition"
+                    className="min-h-[44px] sm:min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold cursor-pointer transition"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>Print / PDF</span>
+                    <span>{Capacitor.isNativePlatform() ? 'Export / Share' : 'Print / PDF'}</span>
                   </button>
                   {contract.contact.email && (
                     <a
                       href={`mailto:${contract.contact.email}?subject=${encodeURIComponent(
                         `Notice of Cancellation - ${contract.name} (Ref: ${contract.contractNumber || ''})`
                       )}&body=${encodeURIComponent(letterBody)}`}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition"
+                      className="min-h-[44px] sm:min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition"
                     >
                       <Mail className="w-3.5 h-3.5" />
                       <span>Open in Email</span>

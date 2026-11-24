@@ -20,6 +20,8 @@ import {
   getCurrencyLabel,
   formatAutoExtendPeriod,
   formatContractDuration,
+  formatOrdinalDay,
+  formatPlannedPaymentSchedule,
   shiftDateByPeriod,
 } from '../../lib/dateUtils';
 import { auth } from '../../lib/firebase';
@@ -90,6 +92,8 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
   const [autoExtendPeriodValue, setAutoExtendPeriodValue] = useState<number | ''>(1);
   const [autoExtendPeriodUnit, setAutoExtendPeriodUnit] = useState<'months' | 'years'>('years');
   const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>('monthly');
+  const [paymentDay, setPaymentDay] = useState<number | ''>('');
+  const [paymentMonth, setPaymentMonth] = useState<number | ''>('');
   const [status, setStatus] = useState<ContractStatus>('active');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -150,6 +154,8 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       setAutoExtendPeriodValue(initPeriod.value || 1);
       setAutoExtendPeriodUnit(initPeriod.unit || 'years');
       setPaymentFrequency(initialContract.paymentFrequency || 'monthly');
+      setPaymentDay(initialContract.paymentDay ?? '');
+      setPaymentMonth(initialContract.paymentMonth ?? '');
       setStatus(initialContract.status);
       setPhone(initialContract.contact?.phone || '');
       setEmail(initialContract.contact?.email || '');
@@ -206,6 +212,8 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       setAutoExtendPeriodValue(defPeriod.value || 1);
       setAutoExtendPeriodUnit(defPeriod.unit || 'years');
       setPaymentFrequency('monthly');
+      setPaymentDay('');
+      setPaymentMonth('');
       setStatus('active');
       setPhone('');
       setEmail('');
@@ -375,6 +383,11 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
       annualCost: Number(annualCost) || 0,
       monthlyCost: Number(monthlyCost) || 0,
       paymentFrequency,
+      paymentDay: paymentDay === '' ? undefined : Number(paymentDay),
+      paymentMonth:
+        paymentFrequency === 'monthly' || paymentMonth === ''
+          ? undefined
+          : Number(paymentMonth),
       status,
       contact: {
         phone: phone.trim() || undefined,
@@ -447,16 +460,16 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
   const currentCategory = categories.find((c) => c.id === categoryId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-      <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] bg-black/60 backdrop-blur-xs overflow-y-auto">
+      <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              {isRollForward && <RotateCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
-              <span>{isRollForward ? 'Roll Forward Contract' : initialContract ? 'Edit Contract' : 'Add New Contract'}</span>
+        <div className="flex items-center justify-between gap-2 px-5 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+          <div className="min-w-0">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 truncate">
+              {isRollForward && <RotateCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />}
+              <span className="truncate">{isRollForward ? 'Roll Forward Contract' : initialContract ? 'Edit Contract' : 'Add New Contract'}</span>
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
               {isRollForward
                 ? 'Review renewal pricing & dates for the new 1-year term'
                 : step === 1
@@ -465,19 +478,21 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+            aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Step Indicator Tabs */}
-        <div className="px-6 pt-3 grid grid-cols-2 gap-2">
+        <div className="px-5 sm:px-6 pt-3 grid grid-cols-2 gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setStep(1)}
-            className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+            className={`min-h-[44px] flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer ${
               step === 1
                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                 : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
@@ -490,19 +505,19 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
             onClick={() => {
               if (validateStep1()) setStep(2);
             }}
-            className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+            className={`min-h-[44px] flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer ${
               step === 2
                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                 : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Key className="w-3.5 h-3.5 text-amber-500" />
-            <span>2. Details & Credentials</span>
+            <Key className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span className="truncate">2. Details &amp; Credentials</span>
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-xs sm:text-sm">
+        <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="flex-1 min-h-0 p-5 sm:p-6 space-y-4 overflow-y-auto text-sm sm:text-xs">
           {step === 1 ? (
             /* STEP 1: Minimal required fields to complete in under 30 seconds */
             <div className="space-y-4">
@@ -524,7 +539,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
               )}
               {/* Name & Supplier */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Contract / Service Name <span className="text-rose-500">*</span>
                   </label>
@@ -534,14 +549,14 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Green Power & Gas, Vodafone 5G"
-                    className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white ${
+                    className={`w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white ${
                       errors.name ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                     }`}
                   />
                   {errors.name && <p className="text-[11px] text-rose-500 mt-1">{errors.name}</p>}
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Supplier / Provider <span className="text-rose-500">*</span>
                   </label>
@@ -551,7 +566,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={supplier}
                     onChange={(e) => setSupplier(e.target.value)}
                     placeholder="e.g. Vattenfall, Ziggo, Interpolis"
-                    className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white ${
+                    className={`w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white ${
                       errors.supplier ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                     }`}
                   />
@@ -561,7 +576,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
 
               {/* Category & Subcategory */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Category <span className="text-rose-500">*</span>
@@ -569,7 +584,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsCategoryModalOpen(true)}
-                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer min-h-[28px]"
                     >
                       <Plus className="w-3 h-3" />
                       <span>+ New category</span>
@@ -578,7 +593,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   <select
                     value={categoryId}
                     onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                    className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
                   >
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -588,7 +603,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   </select>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Subcategory
@@ -599,7 +614,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                         setIsAddingNewSubcat(!isAddingNewSubcat);
                         setTimeout(() => document.getElementById('new-subcat-input')?.focus(), 50);
                       }}
-                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer min-h-[28px]"
                     >
                       <Plus className="w-3 h-3" />
                       <span>+ New subcategory</span>
@@ -607,7 +622,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   </div>
 
                   {isAddingNewSubcat ? (
-                    <div className="flex items-center gap-1.5 p-2 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl animate-in fade-in">
+                    <div className="flex flex-wrap items-center gap-1.5 p-2 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl animate-in fade-in">
                       <input
                         id="new-subcat-input"
                         type="text"
@@ -622,13 +637,13 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                           }
                         }}
                         placeholder="New subcategory name..."
-                        className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                        className="flex-1 min-w-0 px-2.5 py-1.5 text-base sm:text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                       />
                       <button
                         type="button"
                         onClick={handleAddNewSubcat}
                         disabled={!newSubcatInput.trim()}
-                        className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs"
+                        className="min-h-[38px] px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs"
                       >
                         Add
                       </button>
@@ -638,20 +653,20 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                           setIsAddingNewSubcat(false);
                           setNewSubcatInput('');
                         }}
-                        className="px-2 py-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-xs cursor-pointer"
+                        className="min-h-[38px] px-2 py-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-xs cursor-pointer"
                       >
                         Cancel
                       </button>
                     </div>
                   ) : (
-                    <div>
+                    <div className="min-w-0">
                       <input
                         type="text"
                         value={subcategory}
                         onChange={(e) => setSubcategory(e.target.value)}
                         list="subcat-options"
                         placeholder="Select or enter subcategory..."
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                        className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                       />
                       <datalist id="subcat-options">
                         {(currentCategory?.subcategories || []).map((s) => (
@@ -695,7 +710,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setCoverageType('individual')}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition cursor-pointer ${
+                    className={`min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition cursor-pointer ${
                       coverageType === 'individual'
                         ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-950/50 dark:border-indigo-500 dark:text-indigo-300 ring-2 ring-indigo-500/20 font-semibold'
                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'
@@ -707,7 +722,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setCoverageType('family')}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition cursor-pointer ${
+                    className={`min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition cursor-pointer ${
                       coverageType === 'family'
                         ? 'bg-purple-50 border-purple-500 text-purple-700 dark:bg-purple-950/50 dark:border-purple-500 dark:text-purple-300 ring-2 ring-purple-500/20 font-semibold'
                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'
@@ -724,7 +739,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
 
               {/* Dates & Timeline */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Starting Date <span className="text-rose-500">*</span>
                   </label>
@@ -733,19 +748,19 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     required
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums ${
+                    className={`w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums ${
                       errors.startDate ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                     }`}
                   />
                   {errors.startDate && <p className="text-[11px] text-rose-500 mt-1">{errors.startDate}</p>}
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
+                <div className="min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
                     <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                       End Date {!isEndDateOpenEnded && <span className="text-rose-500">*</span>}
                     </label>
-                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 font-medium cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 font-medium cursor-pointer shrink-0">
                       <input
                         type="checkbox"
                         checked={isEndDateOpenEnded}
@@ -766,8 +781,8 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     </label>
                   </div>
                   {isEndDateOpenEnded ? (
-                    <div className="w-full px-3 py-2 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 text-xs font-medium flex items-center justify-between min-h-[38px]">
-                      <span>None (Rolling / Open-ended contract)</span>
+                    <div className="w-full min-w-0 px-3 py-2 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 text-xs font-medium flex flex-wrap items-center justify-between gap-1 min-h-[38px]">
+                      <span>None (Rolling / Open-ended)</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/60 font-semibold text-indigo-800 dark:text-indigo-200">
                         Monthly Rolling
                       </span>
@@ -778,7 +793,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                       required
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums ${
+                      className={`w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums ${
                         errors.endDate ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                       }`}
                     />
@@ -790,11 +805,11 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
               {/* Contract Duration Card & Quick Term Selectors */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div className="flex items-start sm:items-center gap-2.5">
+                  <div className="flex items-start sm:items-center gap-2.5 min-w-0">
                     <div className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5 sm:mt-0">
                       <Clock className="w-4 h-4" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 leading-tight">
                         Contract Duration
                       </div>
@@ -813,7 +828,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
 
                   {/* Quick Term Presets from Starting Date */}
                   {!isEndDateOpenEnded && (
-                    <div className="flex items-center gap-1 self-start sm:self-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 dark:border-slate-700/60 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 dark:border-slate-700/60 w-full sm:w-auto">
                       <span className="text-[10px] text-slate-400 uppercase font-semibold mr-1">
                         Preset:
                       </span>
@@ -831,7 +846,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                             const calculatedEnd = shiftDateByPeriod(base, preset.v, preset.u);
                             setEndDate(calculatedEnd);
                           }}
-                          className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer shadow-2xs"
+                          className="min-h-[34px] px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer shadow-2xs"
                         >
                           {preset.label}
                         </button>
@@ -842,11 +857,11 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
               </div>
 
               {/* Notice Period */}
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Notice Period <span className="text-rose-500">*</span>
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 min-w-0">
                   <input
                     type="number"
                     min={0}
@@ -861,14 +876,14 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                         setNoticeValue(isNaN(parsed) ? '' : Math.max(0, parsed));
                       }
                     }}
-                    className={`w-20 px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-center font-mono tabular-nums ${
+                    className={`w-24 shrink-0 px-3 py-2 text-base sm:text-xs rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-center font-mono tabular-nums ${
                       errors.noticeValue ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                     }`}
                   />
                   <select
                     value={noticeUnit}
                     onChange={(e) => setNoticeUnit(e.target.value as NoticeUnit)}
-                    className="flex-1 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                    className="flex-1 min-w-0 w-full px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
                   >
                     <option value="days">Days</option>
                     <option value="weeks">Weeks</option>
@@ -882,9 +897,9 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
 
               {/* Automatic Cancellation Deadline Showcase */}
               <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60">
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 dark:text-indigo-200">
-                    <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                     <span>{isEndDateOpenEnded ? 'Next Monthly Notice Deadline' : 'Calculated Notice Deadline'}</span>
                   </div>
                   <button
@@ -901,11 +916,10 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     type="date"
                     value={cancellationDeadline}
                     onChange={(e) => setCancellationDeadline(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 font-mono tabular-nums text-xs"
-                  >
-                  </input>
+                    className="w-full min-w-0 px-3 py-1.5 text-base sm:text-xs rounded-lg border border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 font-mono tabular-nums"
+                  />
                 ) : (
-                  <div className="flex items-baseline justify-between">
+                  <div className="flex flex-wrap items-baseline justify-between gap-1.5">
                     <span className="text-base font-bold text-indigo-700 dark:text-indigo-300 font-mono tabular-nums">
                       {formatDate(cancellationDeadline)}
                     </span>
@@ -927,7 +941,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 isRollForward ? 'p-3.5 rounded-2xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30' : ''
               }`}>
                 {isRollForward && (
-                  <div className="col-span-full flex items-center justify-between pb-1 border-b border-indigo-200/60 dark:border-indigo-800/60">
+                  <div className="col-span-full flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-indigo-200/60 dark:border-indigo-800/60">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
                         Renewal Price
@@ -941,7 +955,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     </span>
                   </div>
                 )}
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Monthly Cost ({getCurrencyLabel(user.settings.currency)})
                   </label>
@@ -952,11 +966,11 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={monthlyCost}
                     onChange={(e) => handleMonthlyChange(e.target.value)}
                     placeholder="e.g. 29.99"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums"
+                    className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums"
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Annual Total Cost ({getCurrencyLabel(user.settings.currency)}) <span className="text-rose-500">*</span>
                   </label>
@@ -968,7 +982,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={annualCost}
                     onChange={(e) => handleAnnualChange(e.target.value)}
                     placeholder="e.g. 359.88"
-                    className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums ${
+                    className={`w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums ${
                       errors.annualCost ? 'border-rose-500' : 'border-slate-300 dark:border-slate-700'
                     }`}
                   />
@@ -978,9 +992,99 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 </div>
               </div>
 
+              {/* Billing Frequency & Planned Payment Date */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span>Planned Payment Schedule</span>
+                  </span>
+                  <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                    {formatPlannedPaymentSchedule({
+                      startDate,
+                      paymentFrequency,
+                      paymentDay: paymentDay === '' ? undefined : Number(paymentDay),
+                      paymentMonth: paymentMonth === '' ? undefined : Number(paymentMonth),
+                    })}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="min-w-0">
+                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      Billing Frequency
+                    </label>
+                    <select
+                      value={paymentFrequency}
+                      onChange={(e) => setPaymentFrequency(e.target.value as PaymentFrequency)}
+                      className="w-full min-w-0 px-2.5 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                    >
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="annually">Annually</option>
+                    </select>
+                  </div>
+
+                  {paymentFrequency !== 'monthly' && (
+                    <div className="min-w-0">
+                      <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                        {paymentFrequency === 'annually' ? 'Planned Month' : 'First Billing Month'}
+                      </label>
+                      <select
+                        value={paymentMonth}
+                        onChange={(e) =>
+                          setPaymentMonth(e.target.value === '' ? '' : Number(e.target.value))
+                        }
+                        className="w-full min-w-0 px-2.5 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                      >
+                        <option value="">Start date month</option>
+                        {[
+                          'January',
+                          'February',
+                          'March',
+                          'April',
+                          'May',
+                          'June',
+                          'July',
+                          'August',
+                          'September',
+                          'October',
+                          'November',
+                          'December',
+                        ].map((mName, idx) => (
+                          <option key={mName} value={idx + 1}>
+                            {mName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className={`min-w-0 ${paymentFrequency === 'monthly' ? 'sm:col-span-2' : ''}`}>
+                    <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                      Planned Day of Month
+                    </label>
+                    <select
+                      value={paymentDay}
+                      onChange={(e) =>
+                        setPaymentDay(e.target.value === '' ? '' : Number(e.target.value))
+                      }
+                      className="w-full min-w-0 px-2.5 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums"
+                    >
+                      <option value="">Same day as start date</option>
+                      {Array.from({ length: 31 }, (_, idx) => idx + 1).map((d) => (
+                        <option key={d} value={d}>
+                          {formatOrdinalDay(d)} of the month
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               {/* Shortcut Callout to Login Credentials */}
-              <div className="p-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
+              <div className="p-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <Key className="w-4 h-4 text-amber-500 shrink-0" />
                   <div className="min-w-0">
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block truncate">
@@ -996,7 +1100,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   onClick={() => {
                     if (validateStep1()) setStep(2);
                   }}
-                  className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shrink-0 transition cursor-pointer shadow-2xs"
+                  className="min-h-[44px] sm:min-h-[36px] px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shrink-0 transition cursor-pointer shadow-2xs"
                 >
                   To Credentials →
                 </button>
@@ -1006,7 +1110,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
             /* STEP 2: Optional details (Contract #, renewal, contact, tags, documents) */
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Contract / Customer Number
                   </label>
@@ -1015,29 +1119,74 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={contractNumber}
                     onChange={(e) => setContractNumber(e.target.value)}
                     placeholder="e.g. NL-992019"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Payment Frequency
+                    Payment Frequency &amp; Day of Payment
                   </label>
-                  <select
-                    value={paymentFrequency}
-                    onChange={(e) => setPaymentFrequency(e.target.value as PaymentFrequency)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  >
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="annually">Annually</option>
-                  </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={paymentFrequency}
+                      onChange={(e) => setPaymentFrequency(e.target.value as PaymentFrequency)}
+                      className="w-full min-w-0 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-base sm:text-xs font-medium"
+                    >
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="annually">Annually</option>
+                    </select>
+                    <select
+                      aria-label="Day of Payment"
+                      value={paymentDay}
+                      onChange={(e) =>
+                        setPaymentDay(e.target.value === '' ? '' : Number(e.target.value))
+                      }
+                      className="w-full min-w-0 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-base sm:text-xs font-mono tabular-nums"
+                    >
+                      <option value="">Day: Same as start date</option>
+                      {Array.from({ length: 31 }, (_, idx) => idx + 1).map((d) => (
+                        <option key={d} value={d}>
+                          Day: {formatOrdinalDay(d)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {paymentFrequency !== 'monthly' && (
+                    <select
+                      aria-label="Planned Payment Month"
+                      value={paymentMonth}
+                      onChange={(e) =>
+                        setPaymentMonth(e.target.value === '' ? '' : Number(e.target.value))
+                      }
+                      className="mt-2 w-full min-w-0 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-base sm:text-xs font-medium"
+                    >
+                      <option value="">Month: Start date month</option>
+                      {[
+                        'January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December',
+                      ].map((mName, idx) => (
+                        <option key={mName} value={idx + 1}>
+                          Month: {mName}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Planned: {formatPlannedPaymentSchedule({
+                      startDate,
+                      paymentFrequency,
+                      paymentDay: paymentDay === '' ? undefined : Number(paymentDay),
+                      paymentMonth: paymentMonth === '' ? undefined : Number(paymentMonth),
+                    })}
+                  </p>
                 </div>
               </div>
 
               {/* Renewal & Auto-Extension Settings */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="flex items-center gap-2 text-xs font-semibold text-slate-900 dark:text-white cursor-pointer">
                     <input
                       type="checkbox"
@@ -1055,7 +1204,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 </div>
 
                 {autoRenew && (
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-[11px] text-slate-500 mb-1">
                       Renewal Term Period (Supplier description)
                     </label>
@@ -1064,7 +1213,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                       value={renewalPeriod}
                       onChange={(e) => setRenewalPeriod(e.target.value)}
                       placeholder="e.g. 1 month rolling, 1 calendar year"
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
+                      className="w-full min-w-0 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs text-slate-900 dark:text-white"
                     />
                   </div>
                 )}
@@ -1093,7 +1242,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
 
                   {autoExtendEnabled && (
                     <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/80 space-y-2.5 animate-in fade-in">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <label className="block text-[11px] font-bold text-slate-800 dark:text-slate-200">
                           Configured Extension Period
                         </label>
@@ -1121,7 +1270,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                                 setAutoExtendPeriodValue(p.val);
                                 setAutoExtendPeriodUnit(p.u);
                               }}
-                              className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer text-center ${
+                              className={`min-h-[36px] px-2 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer text-center ${
                                 isCur
                                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
                                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -1134,7 +1283,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                       </div>
 
                       {/* Custom value and unit inputs */}
-                      <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                         <span className="text-[11px] text-slate-500 whitespace-nowrap">Custom:</span>
                         <input
                           type="number"
@@ -1151,12 +1300,12 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                               setAutoExtendPeriodValue(isNaN(parsed) ? '' : Math.max(1, parsed));
                             }
                           }}
-                          className="w-20 px-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-center font-mono font-bold text-slate-900 dark:text-white"
+                          className="w-20 min-w-0 px-2.5 py-1 text-base sm:text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-center font-mono font-bold text-slate-900 dark:text-white"
                         />
                         <select
                           value={autoExtendPeriodUnit}
                           onChange={(e) => setAutoExtendPeriodUnit(e.target.value as 'months' | 'years')}
-                          className="px-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium text-slate-900 dark:text-white"
+                          className="min-w-0 px-2.5 py-1 text-base sm:text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-medium text-slate-900 dark:text-white"
                         >
                           <option value="months">Month(s)</option>
                           <option value="years">Year(s)</option>
@@ -1170,7 +1319,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
               {/* Supplier contact details */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Supplier Contact & Customer Portal
+                  Supplier Contact &amp; Customer Portal
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <input
@@ -1178,32 +1327,32 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="Phone: +31 20 1234..."
-                    className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                    className="w-full min-w-0 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs"
                   />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Email: support@..."
-                    className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                    className="w-full min-w-0 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs"
                   />
                   <input
                     type="url"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     placeholder="URL: https://my..."
-                    className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                    className="w-full min-w-0 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs"
                   />
                 </div>
               </div>
 
               {/* Customer Portal Login Credentials (URL, Username, Password) */}
               <div className="p-3.5 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/50 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
-                    <Key className="w-4 h-4 text-amber-500" />
+                    <Key className="w-4 h-4 text-amber-500 shrink-0" />
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Login & Account Portal Credentials
+                      Login &amp; Account Portal Credentials
                     </span>
                   </div>
                   <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-md">
@@ -1215,57 +1364,57 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 </p>
 
                 {/* Web Address (URL) */}
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Login Website (Portal URL)
                   </label>
-                  <div className="relative">
-                    <Globe className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <div className="relative min-w-0">
+                    <Globe className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="url"
                       value={loginUrl}
                       onChange={(e) => setLoginUrl(e.target.value)}
                       placeholder="e.g. https://portal.provider.com/login"
-                      className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white font-mono"
+                      className="w-full min-w-0 pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs text-slate-900 dark:text-white font-mono"
                     />
                   </div>
                 </div>
 
                 {/* Username & Password Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Username / Email Address
                     </label>
-                    <div className="relative">
-                      <UserIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <div className="relative min-w-0">
+                      <UserIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         value={loginUsername}
                         onChange={(e) => setLoginUsername(e.target.value)}
                         placeholder="e.g. user@example.com or ACC-88192"
-                        className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white font-mono"
+                        className="w-full min-w-0 pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs text-slate-900 dark:text-white font-mono"
                       />
                     </div>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Password
                     </label>
-                    <div className="relative">
-                      <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <div className="relative min-w-0">
+                      <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         placeholder="••••••••••••"
-                        className="w-full pl-8 pr-9 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white font-mono"
+                        className="w-full min-w-0 pl-8 pr-10 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs text-slate-900 dark:text-white font-mono"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1 rounded"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[36px] flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1 rounded"
                         title={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -1275,7 +1424,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 </div>
 
                 {/* Extra login notes / 2FA */}
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Login Notes or 2FA Hint (Optional)
                   </label>
@@ -1284,14 +1433,14 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={loginNotes}
                     onChange={(e) => setLoginNotes(e.target.value)}
                     placeholder="e.g. 2FA via SMS on mobile, PIN 1234, or account # required"
-                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white"
+                    className="w-full min-w-0 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-base sm:text-xs text-slate-900 dark:text-white"
                   />
                 </div>
               </div>
 
               {/* Tags & Alternative quotation for savings calculation */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Tags (Comma-separated)
                   </label>
@@ -1300,11 +1449,11 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                     value={tagsInput}
                     onChange={(e) => setTagsInput(e.target.value)}
                     placeholder="e.g. High Priority, Household, Promo"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Alternative / Target Annual Quote
                   </label>
@@ -1316,35 +1465,35 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                       setAlternativeCost(e.target.value ? parseFloat(e.target.value) : '')
                     }
                     placeholder="For savings insights (e.g. 1800)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums"
+                    className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono tabular-nums"
                   />
                 </div>
               </div>
 
               {/* Document links (NAS, Drive, Dropbox, etc.) */}
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Document Links (NAS, Google Drive, OneDrive, Dropbox)
                 </label>
-                <div className="flex gap-2 mb-2">
+                <div className="flex flex-col sm:flex-row gap-2 mb-2 min-w-0">
                   <input
                     type="text"
                     value={newDocTitle}
                     onChange={(e) => setNewDocTitle(e.target.value)}
                     placeholder="Doc Title (e.g. 2026 Policy PDF)"
-                    className="w-1/3 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs"
+                    className="w-full sm:w-1/3 min-w-0 px-3 py-2 sm:py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs"
                   />
                   <input
                     type="text"
                     value={newDocUrl}
                     onChange={(e) => setNewDocUrl(e.target.value)}
                     placeholder="URL (smb://nas.local/... or https://drive...)"
-                    className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono"
+                    className="w-full sm:flex-1 min-w-0 px-3 py-2 sm:py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-base sm:text-xs font-mono"
                   />
                   <button
                     type="button"
                     onClick={handleAddDocLink}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
+                    className="min-h-[44px] sm:min-h-[34px] px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold cursor-pointer shrink-0"
                   >
                     Add
                   </button>
@@ -1357,18 +1506,19 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                         key={idx}
                         className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs"
                       >
-                        <div className="flex items-center gap-2 truncate">
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        <div className="flex items-center gap-2 min-w-0 truncate">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 shrink-0">
                             {doc.title}
                           </span>
-                          <span className="text-[11px] text-slate-400 font-mono truncate max-w-xs">
+                          <span className="text-[11px] text-slate-400 font-mono truncate">
                             {doc.url}
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setDocLinks(docLinks.filter((_, i) => i !== idx))}
-                          className="text-rose-500 hover:text-rose-700 p-1"
+                          className="min-h-[36px] min-w-[36px] flex items-center justify-center text-rose-500 hover:text-rose-700 p-1 shrink-0"
+                          aria-label="Remove document link"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1379,23 +1529,23 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
               </div>
 
               {/* Notes */}
-              <div>
+              <div className="min-w-0">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Notes & Cancellation Instructions
+                  Notes &amp; Cancellation Instructions
                 </label>
                 <textarea
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="e.g. Must cancel via online portal or send signed letter with reference number..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  className="w-full min-w-0 px-3 py-2 text-base sm:text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 />
               </div>
             </div>
           )}
 
           {/* Footer Controls */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+          <div className="pt-4 pb-[calc(0.25rem+env(safe-area-inset-bottom))] border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
             {step === 1 ? (
               <>
                 {isRollForward && initialContract ? (
@@ -1405,7 +1555,7 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                       deleteContract(initialContract.id);
                       onClose();
                     }}
-                    className="px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition cursor-pointer"
+                    className="min-h-[44px] px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition cursor-pointer"
                   >
                     Discard Duplicate
                   </button>
@@ -1413,25 +1563,25 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                    className="min-h-[44px] px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
                   >
                     Cancel
                   </button>
                 )}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 ml-auto">
                   <button
                     type="button"
                     onClick={() => {
                       if (validateStep1()) setStep(2);
                     }}
-                    className="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer inline-flex items-center gap-1"
+                    className="min-h-[44px] px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer inline-flex items-center gap-1"
                   >
                     <span>More Details</span>
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                    className="min-h-[44px] px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                   >
                     <Check className="w-4 h-4" />
                     <span>{isRollForward ? 'Save Rolled Forward Contract' : initialContract ? 'Save Changes' : 'Save Contract'}</span>
@@ -1443,14 +1593,14 @@ export const ContractFormModal: React.FC<ContractFormModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="inline-flex items-center gap-1 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 cursor-pointer"
+                  className="min-h-[44px] inline-flex items-center gap-1 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 cursor-pointer"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                   <span>Back to Step 1</span>
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                  className="min-h-[44px] px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-xs cursor-pointer inline-flex items-center gap-1.5 ml-auto"
                 >
                   <Check className="w-4 h-4" />
                   <span>{isRollForward ? 'Finish & Save Rolled Forward Contract' : 'Finish & Save'}</span>

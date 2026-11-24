@@ -340,12 +340,45 @@ export function getUrgencyLevel(
   cancellationDeadlineStr: string,
   status: string = 'active',
   hasRolledForward: boolean = false,
-  isCancelledActive: boolean = false
+  isCancelledActive: boolean = false,
+  isRollingMonthly: boolean = false
 ): UrgencyLevel {
-  if (status !== 'active' || hasRolledForward || isCancelledActive) {
+  if (status !== 'active' || hasRolledForward || isCancelledActive || isRollingMonthly) {
     return 'later';
   }
   const days = getDaysRemaining(cancellationDeadlineStr);
+  if (days < 0) return 'overdue';
+  if (days <= 30) return 'next_30';
+  if (days <= 90) return '31_90';
+  return 'later';
+}
+
+/**
+ * Canonical urgency classification used across KPIBar, Sidebar Notice Radar,
+ * Radar Overview filtering, Kanban, Reports, PDF export, and Notifications.
+ */
+export function getContractUrgency(
+  contract: Contract,
+  allContracts?: Contract[]
+): UrgencyLevel {
+  if (!isContractActive(contract)) {
+    return 'later';
+  }
+  const isRolledForward = isContractRolledForward(contract, allContracts);
+  const isCancelled =
+    contract.status === 'cancelled' ||
+    Boolean(contract.cancelledAt) ||
+    isContractCancelledActive(contract);
+  if (
+    contract.status !== 'active' ||
+    isRolledForward ||
+    isCancelled ||
+    contract.isEndDateOpenEnded
+  ) {
+    return 'later';
+  }
+  const deadline = getEffectiveCancellationDeadline(contract);
+  const days = getDaysRemaining(deadline);
   if (days < 0) return 'overdue';
   if (days <= 30) return 'next_30';
   if (days <= 90) return '31_90';
@@ -360,7 +393,8 @@ export function getUrgencyMetadata(
   daysRemaining: number,
   status?: string,
   hasRolledForward?: boolean,
-  isCancelledActive?: boolean
+  isCancelledActive?: boolean,
+  isRollingMonthly?: boolean
 ) {
   if (isCancelledActive) {
     return {
@@ -410,6 +444,17 @@ export function getUrgencyMetadata(
     return {
       label: 'Rolled Forward',
       badgeText: 'Rolled Forward',
+      colorClass: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-900',
+      textClass: 'text-indigo-700 dark:text-indigo-400',
+      borderClass: 'border-l-indigo-500',
+      bgSubtle: 'bg-indigo-500/10',
+      priority: 4,
+    };
+  }
+  if (isRollingMonthly) {
+    return {
+      label: 'Rolling Monthly',
+      badgeText: 'Rolling Monthly',
       colorClass: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-900',
       textClass: 'text-indigo-700 dark:text-indigo-400',
       borderClass: 'border-l-indigo-500',
@@ -598,3 +643,165 @@ export function formatContractDuration(
 
   return `${years} year${years === 1 ? '' : 's'}, ${remainingMonths} mo`;
 }
+
+const FULL_MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const SHORT_MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/**
+ * Formats a day of month with English ordinal suffix (e.g. 1 -> "1st", 20 -> "20th", 29 -> "29th")
+ */
+export function formatOrdinalDay(day: number): string {
+  const d = Math.max(1, Math.min(31, Math.round(day || 1)));
+  if (d >= 11 && d <= 13) return `${d}th`;
+  switch (d % 10) {
+    case 1:
+      return `${d}st`;
+    case 2:
+      return `${d}nd`;
+    case 3:
+      return `${d}rd`;
+    default:
+      return `${d}th`;
+  }
+}
+
+/**
+ * Resolves the contract's planned payment day (1-31) and month (1-12),
+ * falling back to startDate when explicit schedule fields are omitted.
+ */
+export function getContractPaymentSchedule(contract: Partial<Contract>): {
+  day: number;
+  month: number;
+  isExplicitDay: boolean;
+  isExplicitMonth: boolean;
+} {
+  const fallbackParts = (contract.startDate || getTodayString()).split('-').map(Number);
+  const fallbackMonth = fallbackParts[1] >= 1 && fallbackParts[1] <= 12 ? fallbackParts[1] : 1;
+  const fallbackDay = fallbackParts[2] >= 1 && fallbackParts[2] <= 31 ? fallbackParts[2] : 1;
+
+  const isExplicitDay =
+    typeof contract.paymentDay === 'number' && contract.paymentDay >= 1 && contract.paymentDay <= 31;
+  const isExplicitMonth =
+    typeof contract.paymentMonth === 'number' && contract.paymentMonth >= 1 && contract.paymentMonth <= 12;
+
+  return {
+    day: isExplicitDay ? contract.paymentDay! : fallbackDay,
+    month: isExplicitMonth ? contract.paymentMonth! : fallbackMonth,
+    isExplicitDay,
+    isExplicitMonth,
+  };
+}
+
+/**
+ * Human-readable planned payment schedule description, e.g.:
+ * - "December 29th" (annually)
+ * - "20th of each month" (monthly)
+ * - "20th (Mar, Jun, Sep, Dec)" (quarterly)
+ */
+export function formatPlannedPaymentSchedule(
+  contract: Partial<Contract>,
+  options: { compact?: boolean } = {}
+): string {
+  const freq = contract.paymentFrequency || 'monthly';
+  const { day, month } = getContractPaymentSchedule(contract);
+  const ordinalDay = formatOrdinalDay(day);
+
+  if (freq === 'annually') {
+    const monthLabel = options.compact
+      ? SHORT_MONTH_NAMES[month - 1]
+      : FULL_MONTH_NAMES[month - 1];
+    return `${monthLabel} ${ordinalDay}`;
+  }
+
+  if (freq === 'quarterly') {
+    if (options.compact) {
+      return `${ordinalDay} · Quarterly`;
+    }
+    const qMonths = [0, 3, 6, 9].map((offset) => SHORT_MONTH_NAMES[(month - 1 + offset) % 12]);
+    return `${ordinalDay} (${qMonths.join(', ')})`;
+  }
+
+  return options.compact ? `${ordinalDay} / mo` : `${ordinalDay} of each month`;
+}
+
+/**
+ * Returns the next upcoming planned payment date (YYYY-MM-DD) for a contract,
+ * or null if the contract has ended / will not charge again.
+ */
+export function getNextPlannedPaymentDate(
+  contract: Partial<Contract>,
+  todayStr: string = getTodayString()
+): string | null {
+  if (contract.status === 'expired') return null;
+  if (contract.status === 'cancelled' && !isContractCancelledActive(contract as Contract, todayStr)) {
+    return null;
+  }
+
+  const freq = contract.paymentFrequency || 'monthly';
+  const stepMonths = freq === 'annually' ? 12 : freq === 'quarterly' ? 3 : 1;
+  const { day, month } = getContractPaymentSchedule(contract);
+
+  const [todayY, todayM] = todayStr.split('-').map(Number);
+  const startParts = (contract.startDate || todayStr).split('-').map(Number);
+  const anchorY = startParts[0] || todayY;
+  const anchorMonth0 = month - 1;
+
+  const anchorTotal = anchorY * 12 + anchorMonth0;
+  const todayTotal = todayY * 12 + (todayM - 1);
+
+  let cycleOffset = 0;
+  if (todayTotal > anchorTotal) {
+    const diff = todayTotal - anchorTotal;
+    cycleOffset = Math.floor(diff / stepMonths) * stepMonths;
+  }
+
+  const cancelledActive = isContractCancelledActive(contract as Contract, todayStr);
+  const stopsAtEnd =
+    cancelledActive || (!contract.autoRenew && !contract.isEndDateOpenEnded);
+
+  for (let i = 0; i < 60; i++) {
+    const total = anchorTotal + cycleOffset + i * stepMonths;
+    const y = Math.floor(total / 12);
+    const m0 = ((total % 12) + 12) % 12;
+    const daysInMonth = new Date(y, m0 + 1, 0).getDate();
+    const clampedDay = Math.min(day, daysInMonth);
+    const candidate = `${y}-${String(m0 + 1).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
+
+    if (candidate < todayStr) continue;
+    if (contract.startDate && candidate < contract.startDate) continue;
+    if (stopsAtEnd && !contract.isEndDateOpenEnded && contract.endDate && candidate >= contract.endDate) {
+      return null;
+    }
+    return candidate;
+  }
+
+  return null;
+}
+

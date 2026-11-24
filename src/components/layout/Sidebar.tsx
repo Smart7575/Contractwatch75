@@ -21,10 +21,11 @@ import {
   LogIn,
   SlidersHorizontal,
   FileSpreadsheet,
+  TrendingUp,
   Cloud,
   RefreshCw,
 } from 'lucide-react';
-import { formatCurrency, getDaysRemaining, getEffectiveCancellationDeadline, isContractRolledForward, isContractActive } from '../../lib/dateUtils';
+import { formatCurrency, getContractUrgency, isContractActive } from '../../lib/dateUtils';
 import { getCategoryIconComponent } from '../../lib/categoryIcons';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -83,31 +84,35 @@ export const Sidebar: React.FC = () => {
     setFilters(newFilters);
   };
 
-  // Group stats
+  // Helper to apply Notice Radar horizon filter cleanly so Radar Overview matches the Notice Radar count
+  const applyRadarFilter = (urgency: 'all' | 'overdue' | 'next_30' | '31_90' | 'later') => {
+    setCurrentPage('dashboard');
+    setFilters({
+      urgency,
+      status: 'active',
+      categoryId: 'all',
+      coverageType: 'all',
+      search: '',
+    });
+  };
+
+  // Group stats (canonical urgency matching KPIBar & Radar Overview)
   const activeContracts = contracts.filter((c) => isContractActive(c));
-  const overdueCount = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
-    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return diff < 0;
-  }).length;
+  const overdueCount = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'overdue'
+  ).length;
 
-  const next30Count = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
-    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return diff >= 0 && diff <= 30;
-  }).length;
+  const next30Count = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'next_30'
+  ).length;
 
-  const in31to90Count = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return false;
-    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return diff > 30 && diff <= 90;
-  }).length;
+  const in31to90Count = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === '31_90'
+  ).length;
 
-  const olderThan90Count = activeContracts.filter((c) => {
-    if (isContractRolledForward(c, contracts) || c.status === 'cancelled' || Boolean(c.cancelledAt)) return true;
-    const diff = getDaysRemaining(getEffectiveCancellationDeadline(c));
-    return diff > 90;
-  }).length;
+  const olderThan90Count = activeContracts.filter(
+    (c) => getContractUrgency(c, contracts) === 'later'
+  ).length;
 
   // Categories sorted alphabetically by name with spend > 0
   const sortedCategories = categories
@@ -167,7 +172,13 @@ export const Sidebar: React.FC = () => {
           <button
             onClick={() => {
               setCurrentPage('dashboard');
-              setFilters({ urgency: 'all', status: 'active', categoryId: 'all' });
+              setFilters({
+                urgency: 'all',
+                status: 'active',
+                categoryId: 'all',
+                coverageType: 'all',
+                search: '',
+              });
             }}
             title="Radar Overview"
             className={`w-full flex items-center ${
@@ -198,6 +209,23 @@ export const Sidebar: React.FC = () => {
             <div className="flex items-center gap-2">
               <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
               {!isCollapsed && <span>Reports Overview</span>}
+            </div>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('cashflow')}
+            title="Cashflow Forecast"
+            className={`w-full flex items-center ${
+              isCollapsed ? 'justify-center p-1.5' : 'justify-between px-2.5 py-1.5'
+            } text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+              currentPage === 'cashflow'
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              {!isCollapsed && <span>Cashflow Forecast</span>}
             </div>
           </button>
         </div>
@@ -246,7 +274,7 @@ export const Sidebar: React.FC = () => {
           {(isRadarOpen || isCollapsed) && (
             <div className="space-y-0.5">
               <button
-                onClick={() => applyFilter({ urgency: 'all', status: 'active' })}
+                onClick={() => applyRadarFilter('all')}
                 title="All Active Contracts"
                 className={`w-full flex items-center ${
                   isCollapsed ? 'justify-center p-1.5' : 'justify-between px-2.5 py-1.5'
@@ -268,7 +296,7 @@ export const Sidebar: React.FC = () => {
               </button>
 
               <button
-                onClick={() => applyFilter({ urgency: 'overdue', status: 'active' })}
+                onClick={() => applyRadarFilter('overdue')}
                 title={`Overdue Notice (${overdueCount})`}
                 className={`w-full flex items-center ${
                   isCollapsed ? 'justify-center p-1.5' : 'justify-between px-2.5 py-1.5'
@@ -293,7 +321,7 @@ export const Sidebar: React.FC = () => {
               </button>
 
               <button
-                onClick={() => applyFilter({ urgency: 'next_30', status: 'active' })}
+                onClick={() => applyRadarFilter('next_30')}
                 title={`Next 30 Days (${next30Count})`}
                 className={`w-full flex items-center ${
                   isCollapsed ? 'justify-center p-1.5' : 'justify-between px-2.5 py-1.5'
@@ -318,7 +346,7 @@ export const Sidebar: React.FC = () => {
               </button>
 
               <button
-                onClick={() => applyFilter({ urgency: '31_90', status: 'active' })}
+                onClick={() => applyRadarFilter('31_90')}
                 title={`31–90 Days (${in31to90Count})`}
                 className={`w-full flex items-center ${
                   isCollapsed ? 'justify-center p-1.5' : 'justify-between px-2.5 py-1.5'
@@ -340,7 +368,7 @@ export const Sidebar: React.FC = () => {
               </button>
 
               <button
-                onClick={() => applyFilter({ urgency: 'later', status: 'active' })}
+                onClick={() => applyRadarFilter('later')}
                 title={`More than 90 days (${olderThan90Count})`}
                 className={`w-full flex items-center ${
                   isCollapsed ? 'justify-center p-1.5' : 'justify-between px-2.5 py-1.5'
@@ -471,7 +499,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Sidebar Footer with Premium User & Logout Section */}
-      <div className="pt-2.5 mt-auto border-t border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] mt-auto border-t border-slate-100 dark:border-slate-800 shrink-0">
         {isCollapsed ? (
           <div className="flex justify-center">
             {isFirebaseAuthenticated ? (
@@ -480,7 +508,7 @@ export const Sidebar: React.FC = () => {
                   onClick={syncWithFirebase}
                   disabled={isSyncingWithFirebase}
                   title={`Firebase Synced (${contracts.length} contracts). Click to sync now.`}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 transition cursor-pointer shadow-2xs disabled:opacity-50"
+                  className="w-11 h-11 rounded-xl flex items-center justify-center bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 transition cursor-pointer shadow-2xs disabled:opacity-50"
                   aria-label="Sync with Firebase"
                 >
                   <RefreshCw className={`w-4 h-4 ${isSyncingWithFirebase ? 'animate-spin' : ''}`} />
@@ -488,7 +516,7 @@ export const Sidebar: React.FC = () => {
                 <button
                   onClick={logout}
                   title={`Log Out (${user.name})`}
-                  className="group relative w-9 h-9 rounded-xl flex items-center justify-center bg-slate-100/80 dark:bg-slate-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200/60 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs"
+                  className="group relative w-11 h-11 rounded-xl flex items-center justify-center bg-slate-100/80 dark:bg-slate-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200/60 dark:border-slate-700/60 transition-all cursor-pointer shadow-2xs"
                   aria-label="Log Out"
                 >
                   <LogOut className="w-4 h-4 transition-transform group-hover:scale-110" />
@@ -498,7 +526,7 @@ export const Sidebar: React.FC = () => {
               <button
                 onClick={() => setIsAuthModalOpen(true)}
                 title="Sign in or register"
-                className="group relative w-9 h-9 rounded-xl flex items-center justify-center bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs"
+                className="group relative w-11 h-11 rounded-xl flex items-center justify-center bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs"
               >
                 <LogIn className="w-4 h-4" />
               </button>
@@ -521,7 +549,7 @@ export const Sidebar: React.FC = () => {
                 onClick={syncWithFirebase}
                 disabled={isSyncingWithFirebase}
                 title="Synchronize all contracts with Firebase now"
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[10px] transition cursor-pointer shadow-2xs disabled:opacity-50"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[10px] transition cursor-pointer shadow-2xs disabled:opacity-50"
               >
                 <RefreshCw className={`w-3 h-3 ${isSyncingWithFirebase ? 'animate-spin' : ''}`} />
                 <span>Sync</span>
@@ -551,7 +579,7 @@ export const Sidebar: React.FC = () => {
               <button
                 onClick={logout}
                 title="Log Out"
-                className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-900 border border-transparent hover:border-rose-200 dark:hover:border-rose-900/60 rounded-lg transition-all cursor-pointer shrink-0 shadow-2xs"
+                className="flex items-center gap-1.5 min-h-[36px] px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-900 border border-transparent hover:border-rose-200 dark:hover:border-rose-900/60 rounded-lg transition-all cursor-pointer shrink-0 shadow-2xs"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Log Out</span>
@@ -573,7 +601,7 @@ export const Sidebar: React.FC = () => {
             </p>
             <button
               onClick={() => setIsAuthModalOpen(true)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition cursor-pointer"
+              className="w-full min-h-[44px] flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" />
               <span>Sign In / Register</span>

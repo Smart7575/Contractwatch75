@@ -5,11 +5,12 @@ import {
   formatCurrency,
   formatDate,
   getDaysRemaining,
-  getUrgencyLevel,
+  getContractUrgency,
   getUrgencyMetadata,
   getEffectiveCancellationDeadline,
   isContractRolledForward,
   isContractCancelledActive,
+  formatPlannedPaymentSchedule,
 } from '../../lib/dateUtils';
 import {
   AlertTriangle,
@@ -28,7 +29,7 @@ interface TableViewProps {
 }
 
 export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
-  const { setSelectedContractId, rollForwardContract, categories, user, filters, setFilters } = useApp();
+  const { setSelectedContractId, rollForwardContract, contracts: allContracts, categories, user, filters, setFilters } = useApp();
 
   const handleSort = (field: 'deadline' | 'annualCost' | 'name' | 'supplier') => {
     if (filters.sortBy === field) {
@@ -81,10 +82,10 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
             const category = categories.find((c) => c.id === contract.categoryId);
             const deadline = getEffectiveCancellationDeadline(contract);
             const days = getDaysRemaining(deadline);
-            const isRolledForward = isContractRolledForward(contract, contracts);
+            const isRolledForward = isContractRolledForward(contract, allContracts);
             const isCancelledActive = isContractCancelledActive(contract);
-            const urgency = getUrgencyLevel(deadline, contract.status, isRolledForward, isCancelledActive);
-            const urgencyMeta = getUrgencyMetadata(urgency, days, contract.status, isRolledForward, isCancelledActive);
+            const urgency = getContractUrgency(contract, allContracts);
+            const urgencyMeta = getUrgencyMetadata(urgency, days, contract.status, isRolledForward, isCancelledActive, contract.isEndDateOpenEnded);
 
             const UrgencyIcon =
               urgency === 'overdue'
@@ -171,7 +172,10 @@ export const TableView: React.FC<TableViewProps> = ({ contracts }) => {
                     {formatCurrency(contract.annualCost, user.settings.currency)}
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    {formatCurrency(contract.monthlyCost, user.settings.currency)}/mo
+                    {formatCurrency(contract.monthlyCost, user.settings.currency)}/mo ·{' '}
+                    <span className="text-slate-500 dark:text-slate-400 font-sans">
+                      {formatPlannedPaymentSchedule(contract, { compact: true })}
+                    </span>
                   </div>
                 </td>
 

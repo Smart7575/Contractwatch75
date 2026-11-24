@@ -16,6 +16,7 @@ import { ContractDossierModal } from './components/contracts/ContractDossierModa
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { ReportsPage } from './components/reports/ReportsPage';
+import { CashflowPage } from './components/cashflow/CashflowPage';
 import { ImportExportModal } from './components/settings/ImportExportModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { LoginPage } from './components/auth/LoginPage';
@@ -39,21 +40,23 @@ const DashboardContent: React.FC = () => {
   } = useApp();
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden transition-colors">
+    <div className="h-dvh flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden transition-colors">
       {/* Top 3-zone Header */}
       <Header />
 
       {/* Main Workspace with Sidebar & Viewport */}
-      <div className="flex-1 flex max-w-[1600px] w-full mx-auto overflow-hidden min-h-0">
+      <div className="flex-1 flex max-w-[1600px] w-full mx-auto overflow-hidden min-h-0 pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
         {/* Desktop & iPad Sidebar */}
         <Sidebar />
 
         {/* Main Content Area - Independently scrollable */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 md:pb-8 overflow-y-auto w-full min-h-0">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-[calc(6.25rem+env(safe-area-inset-bottom))] md:pb-[calc(2rem+env(safe-area-inset-bottom))] overflow-y-auto w-full min-h-0">
           {currentPage === 'settings' ? (
             <SettingsPage />
           ) : currentPage === 'reports' ? (
             <ReportsPage />
+          ) : currentPage === 'cashflow' ? (
+            <CashflowPage />
           ) : (
             <>
               {/* 5-Second KPI Clarity Bar */}
@@ -108,7 +111,7 @@ const AppNavigation: React.FC = () => {
 
   if (isLoadingAuth) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      <div className="min-h-dvh w-full flex flex-col items-center justify-center px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-600/30">
             CW

@@ -1,7 +1,12 @@
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithCredential,
+  GoogleAuthProvider,
+  OAuthProvider,
   signOut,
   deleteUser,
   updateProfile,
@@ -487,6 +492,11 @@ export async function deleteUserAccountCompletely(userId: string): Promise<void>
     } catch (authError: any) {
       console.warn('Firebase Auth user deletion note (signing out user without blocking):', authError?.code || authError);
       try {
+        if (Capacitor.isNativePlatform()) {
+          try {
+            await FirebaseAuthentication.signOut();
+          } catch {}
+        }
         await signOut(auth);
       } catch {}
     }
@@ -525,6 +535,19 @@ export async function loginWithEmail(email: string, pass: string): Promise<AuthA
 
 export async function loginWithGoogle(): Promise<AuthActionResult> {
   try {
+    if (Capacitor.isNativePlatform()) {
+      const result = await FirebaseAuthentication.signInWithGoogle({
+        skipNativeAuth: true,
+      });
+      const idToken = result.credential?.idToken;
+      if (!idToken) {
+        return { success: false, error: 'Google sign-in did not return an ID token.' };
+      }
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await signInWithCredential(auth, credential);
+      await syncUserProfile(userCredential.user, 'google');
+      return { success: true, user: userCredential.user };
+    }
     const userCredential = await signInWithPopup(auth, googleProvider);
     await syncUserProfile(userCredential.user, 'google');
     return { success: true, user: userCredential.user };
@@ -535,6 +558,23 @@ export async function loginWithGoogle(): Promise<AuthActionResult> {
 
 export async function loginWithApple(): Promise<AuthActionResult> {
   try {
+    if (Capacitor.isNativePlatform()) {
+      const result = await FirebaseAuthentication.signInWithApple({
+        skipNativeAuth: true,
+      });
+      const idToken = result.credential?.idToken;
+      if (!idToken) {
+        return { success: false, error: 'Apple sign-in did not return an ID token.' };
+      }
+      const provider = new OAuthProvider('apple.com');
+      const rawNonce = result.credential?.nonce;
+      const credential = provider.credential(
+        rawNonce ? { idToken, rawNonce } : { idToken }
+      );
+      const userCredential = await signInWithCredential(auth, credential);
+      await syncUserProfile(userCredential.user, 'apple');
+      return { success: true, user: userCredential.user };
+    }
     const userCredential = await signInWithPopup(auth, appleProvider);
     await syncUserProfile(userCredential.user, 'apple');
     return { success: true, user: userCredential.user };
@@ -553,5 +593,10 @@ export async function resetPassword(email: string): Promise<AuthActionResult> {
 }
 
 export async function logoutUser(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await FirebaseAuthentication.signOut();
+    } catch {}
+  }
   await signOut(auth);
 }
